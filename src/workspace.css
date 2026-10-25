@@ -4,7 +4,7 @@
 .dsh-ws-main-context small { margin-left: auto; font-size: 8px; white-space: nowrap; color: var(--sc-caption); }
 .dsh-ws-grid { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .dsh-ws-tabbar { position: relative; display: flex; align-items: stretch; min-width: 0; min-height: 0; padding: 4px 7px 3px; gap: 4px; border-bottom: 1px solid var(--sc-line-soft); background: var(--sc-bg); z-index: 3; }
-.dsh-ws-tabbar[data-ws-tabbar='top'] { padding: 10px 80px 9px 8px; }
+.dsh-ws-tabbar[data-ws-tabbar='top'] { padding: 10px 47px 9px 8px; }
 .dsh-ws-tab-scroll { display: flex; align-items: stretch; flex: 1; min-width: 0; gap: 3px; overflow-x: auto; scrollbar-width: none; }
 .dsh-ws-tab-scroll::-webkit-scrollbar { display: none; }
 .dsh-ws-tab { display: flex; position: relative; flex: 0 1 154px; min-width: 96px; max-width: 190px; border: 1px solid transparent; border-radius: 9px; color: var(--sc-muted); background: transparent; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }

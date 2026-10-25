@@ -34,7 +34,7 @@ npm run install:dsh -- --workspace "C:\path\to\your-project"
 
 If DSH is running, **save drafts, stop tasks, exit the DSH service, and restart it with your usual launcher**. Closing only the browser window may leave the service running. Your existing shortcut can still be used if it launches the same DSH home and `web` profile.
 
-Select a workspace, then use DSH's upper-right menu and sidebar toggle. The tab bar's **＋** adds webpages and side chats. Opening the panel does not automatically call a model.
+Select a workspace, then open the sidebar with DSH's upper-right toggle. The tab bar's **＋** opens webpages, side chats, and collaboration. Opening the panel does not automatically call a model.
 
 For custom DSH locations, release archives, standalone launch, and upgrade instructions, see the [full installation guide in Chinese](README.md#安装到现有-dsh).
 

@@ -2,6 +2,7 @@
 
 ## 开发中 — DSH 主控的多模型协作
 
+- 删除重复的右上角 `···` 菜单，功能统一从标签栏 ＋ 打开，并收紧顶部按钮间距。
 - 新增“协作”标签、成员配置、任务状态、取消以及文本和图片结果预览。
 - 为主会话注册六个分派与查询工具；默认并发 3 项，结果写入所属工作区。
 - 支持 Chat Completions、Responses、Images 和 Claude Messages 基础协议；提供 GLM、Qwen、OpenAI Image、Claude 停用预设及自定义中转配置。

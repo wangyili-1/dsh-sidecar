@@ -5,62 +5,17 @@ import { createRuntimeControls } from './runtime-controls.mjs';
 import './toolbar.css';
 
 export const inject = ['slots', 'layout', 'connection', 'sessions', 'workspaces', 'uiWorkspace', 'modelDirectories', 'remote', 'remote.session'];
-const TOOLS = [
-  { id: 'browser', label: '网页' },
-  { id: 'chat', label: '侧聊' },
-  { id: 'team', label: '协作' },
-];
-function ToolbarIcon({ name }) {
-  const paths = {
-    more: <><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></>,
-    controls: <><path d="M10 6h10M4 12h8M18 12h2M4 18h3M13 18h7"/><circle cx="6" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></>,
-    new: <><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></>,
-    files: <><path d="M3 6h6l2 2h10v12H3z"/><path d="M3 6V4h6l2 2h8v2"/></>,
-    terminal: <path d="m5 6 5 5-5 5M13 17h6"/>,
-    browser: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></>,
-    chat: <path d="M4 4h16v12H9l-5 4z"/>,
-    team: <><circle cx="9" cy="7" r="3"/><path d="M3 20v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2"/></>,
-  };
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
-}
-function Toolbar({ state, onToggle, onTool }) {
-  const [menu, setMenu] = useState(false);
-  const root = useRef(null);
-  const trigger = useRef(null);
-  useEffect(() => {
-    if (!menu) return undefined;
-    const owner = root.current?.ownerDocument;
-    const outside = event => { if (!root.current?.contains(event.target)) setMenu(false); };
-    const escape = event => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault(); setMenu(false); trigger.current?.focus();
-    };
-    owner?.addEventListener('pointerdown', outside);
-    owner?.addEventListener('keydown', escape);
-    return () => { owner?.removeEventListener('pointerdown', outside); owner?.removeEventListener('keydown', escape); };
-  }, [menu]);
-  const focusItem = index => {
-    const items = root.current?.querySelectorAll('[role="menuitem"]');
-    if (items?.length) items[(index + items.length) % items.length].focus();
-  };
-  const choose = (tool, action) => { setMenu(false); void onTool(tool, action); };
-  return <div ref={root} className="dsh-sc-toolbar" role="group" aria-label="Sidecar 插件工具">
-    <button ref={trigger} className="dsh-sc-toolbar-button" type="button" aria-label="Sidecar 功能菜单" title="功能菜单" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(value => !value)} onKeyDown={event => {
-      if (event.key === 'ArrowDown') { event.preventDefault(); setMenu(true); queueMicrotask(() => focusItem(0)); }
-    }}><ToolbarIcon name="more"/></button>
-    <button className="dsh-sc-toolbar-button" type="button" aria-label={state.visible ? '关闭 Sidecar 侧栏' : '打开 Sidecar 侧栏'} title={state.visible ? '关闭侧栏' : '打开侧栏'} aria-pressed={state.visible} onClick={() => { setMenu(false); void onToggle(); }}><ToolbarIcon name="controls"/></button>
-    {menu && <div className="dsh-sc-toolbar-menu" role="menu" aria-label="Sidecar 功能" onKeyDown={event => {
-      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-      event.preventDefault();
-      const items = Array.from(root.current.querySelectorAll('[role="menuitem"]'));
-      focusItem(items.indexOf(event.target) + (event.key === 'ArrowDown' ? 1 : -1));
-    }}>{TOOLS.map(tool => <button key={tool.id} type="button" role="menuitem" disabled={state.busy} onClick={() => choose(tool.id)}><ToolbarIcon name={tool.id}/><span>{tool.label}</span></button>)}</div>}
+function Toolbar({ state, onToggle }) {
+  return <div className="dsh-sc-toolbar" role="group" aria-label="Sidecar 插件工具">
+    <button className="dsh-sc-toolbar-button" type="button" aria-label={state.visible ? '关闭 Sidecar 侧栏' : '打开 Sidecar 侧栏'} title={state.visible ? '关闭侧栏' : '打开侧栏'} aria-pressed={state.visible} onClick={() => void onToggle()}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 6h10M4 12h8M18 12h2M4 18h3M13 18h7"/><circle cx="6" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg>
+    </button>
   </div>;
 }
-function HeaderToolbar({ useSidecarState, onToggle, onTool }) {
+function HeaderToolbar({ useSidecarState, onToggle }) {
   const state = useSidecarState(value => value);
   if (state.visible || state.blank) return null;
-  return <Toolbar state={state} onToggle={onToggle} onTool={onTool}/>;
+  return <Toolbar state={state} onToggle={onToggle}/>;
 }
 function ResizeHandle({ dock, visible }) {
   const [snapshot, setSnapshot] = useState({ panelWidth: 420, minWidth: 320, maxWidth: 960, ready: false, resizing: false });
@@ -100,7 +55,7 @@ function ResizeHandle({ dock, visible }) {
     if (dock.current?.resizeByKey(event.key, event.shiftKey)) event.preventDefault();
   }}><span/></div>;
 }
-function Overlay({ api, useSidecarState, onToggle, onTool, onClose }) {
+function Overlay({ api, useSidecarState, onToggle }) {
   const state = useSidecarState(value => value);
   const root = useRef(null);
   const dock = useRef(null);
@@ -112,7 +67,7 @@ function Overlay({ api, useSidecarState, onToggle, onTool, onClose }) {
   }, []);
   useLayoutEffect(() => { dock.current?.update({ visible: state.visible }); }, [state.visible]);
   return <div ref={root} className="dsh-sc-shell-overlay">
-    {(state.visible || state.blank) && <div className="dsh-sc-floating-toolbar"><Toolbar state={state} onToggle={onToggle} onTool={onTool}/></div>}
+    {(state.visible || state.blank) && <div className="dsh-sc-floating-toolbar"><Toolbar state={state} onToggle={onToggle}/></div>}
     <div className="dsh-sc-global-panel" data-open={state.visible ? 'true' : 'false'} aria-hidden={!state.visible} inert={state.visible ? undefined : ''}>
       {state.error && <div className="dsh-sc-launcher-notice" role="status">{state.error}</div>}
       {state.opened && (state.mainSessionId ? <Panel key={state.mainSessionId} api={api} mainSessionId={state.mainSessionId} toolIntent={state.toolIntent}/> : <aside className="dsh-sc-launcher-empty" aria-label="Sidecar 右栏"><strong>{state.busy ? '连接中…' : '选择工作区'}</strong></aside>)}
