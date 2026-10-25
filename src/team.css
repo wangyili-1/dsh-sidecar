@@ -61,4 +61,22 @@
 .dsh-team-profile footer { display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .dsh-team-profile footer > .dsh-team-save { margin-left: auto; }
 .dsh-team-remove-confirm { display: flex; align-items: center; gap: 2px; color: var(--sc-muted); font-size: 11px; }
+.dsh-team-resources { border-top: 1px solid var(--sc-line-soft); padding: 9px 0; color: var(--sc-secondary); font-size: 11px; }
+.dsh-team-resources summary { cursor: pointer; padding: 3px 0; }
+.dsh-team-resources > .dsh-team-hint { margin: 7px 0; }
+.dsh-team-resource-list { max-height: 230px; overflow-y: auto; display: grid; gap: 5px; }
+.dsh-team button.dsh-team-resource { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; white-space: normal; text-align: left; padding: 9px 10px; border: 1px solid var(--sc-line-soft); border-radius: 8px; background: var(--sc-surface); }
+.dsh-team-resource strong { font-size: 11px; font-weight: 500; }
+.dsh-team-resource span, .dsh-team-resource-note { color: var(--sc-caption); font-size: 10px; line-height: 1.6; }
+.dsh-team .dsh-team-resource-note { margin-bottom: 12px; }
+.dsh-team a { color: var(--sc-secondary); }
+.dsh-team-handoff { margin: 10px 0; padding: 10px; border: 1px solid var(--sc-line); border-radius: 9px; background: var(--sc-surface); }
+.dsh-team-handoff-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 9px; font-size: 11px; }
+.dsh-team-handoff-actions a { text-decoration: none; padding: 4px 0; }
+.dsh-team-copy-fallback { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; font-size: 11px; color: var(--sc-muted); }
+.dsh-team .dsh-team-copy-fallback textarea, .dsh-team .dsh-team-manual-form textarea { min-height: 90px; max-height: 260px; background: var(--sc-bg); font-size: 11px; }
+.dsh-team-manual-form { display: flex; flex-direction: column; gap: 9px; }
+.dsh-team-manual-form > button { align-self: flex-end; }
+.dsh-team-manual-form .dsh-team-error { margin: 0; }
+.dsh-team-profile fieldset > .dsh-team-hint { margin: -2px 0 12px; }
 @media (max-width: 440px) { .dsh-team-config { width: calc(100vw - 24px); } .dsh-team-field-row { gap: 8px; } }

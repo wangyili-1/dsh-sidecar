@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createAgentProviderStore } from './agent-providers.mjs';
+import { isAgentReady } from './agent-resources.mjs';
 
 const terminal = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const validId = value => typeof value === 'string' && /^[\w.:-]{1,160}$/.test(value);
@@ -57,8 +58,9 @@ export function createTeamService({ dataDir, resolveWorkspace, providers, concur
     catch (error) { if (error.code === 'ENOENT') return; throw fail('team-state-unavailable', '无法读取协作任务记录。'); }
     if (state.schema !== 1 || !Array.isArray(state.tasks) || state.tasks.length > 1000) throw fail('team-state-unavailable', '协作任务记录格式不正确。');
     for (const row of state.tasks) {
-      if (!validId(row.id) || !validId(row.mainSessionId) || !validId(row.agentId) || tasks.has(row.id) || !['queued', 'running', ...terminal].includes(row.status)) throw fail('team-state-unavailable', '协作任务记录不完整。');
-      if (!terminal.has(row.status)) {
+      if (!validId(row.id) || !validId(row.mainSessionId) || !validId(row.agentId) || tasks.has(row.id) || !['queued', 'running', 'awaiting-user', ...terminal].includes(row.status)) throw fail('team-state-unavailable', '协作任务记录不完整。');
+      if (row.status === 'awaiting-user' && (row.executionMode !== 'web-manual' || typeof row.handoff?.url !== 'string' || typeof row.handoff?.prompt !== 'string')) throw fail('team-state-unavailable', '网页任务缺少交接信息。');
+      if (!terminal.has(row.status) && row.status !== 'awaiting-user') {
         row.status = 'interrupted'; row.finishedAt = Date.now();
         row.error = { code: 'service-restarted', message: '服务已重启，任务没有自动重新提交。请检查供应商端状态后决定是否重试。' };
       }
@@ -85,7 +87,7 @@ export function createTeamService({ dataDir, resolveWorkspace, providers, concur
     const { workspace: ignored, ...value } = row;
     const result = clone(value);
     const limit = summary ? 1200 : 24000;
-    if (result.result?.text?.length > limit) result.result.text = result.result.text.slice(0, limit) + '\n\n[结果较长，完整内容保存在 result.md 产物中。]';
+    if (result.result?.text?.length > limit) result.result.text = result.result.text.slice(0, limit) + `\n\n[结果较长，完整内容保存在 ${result.result.artifacts?.find(item => item.mimeType === 'text/markdown')?.name || 'result.md'} 产物中。]`;
     return result;
   }
   async function artifactDirectory(row) {
@@ -175,7 +177,7 @@ export function createTeamService({ dataDir, resolveWorkspace, providers, concur
     });
   }
   const team = {
-    async listAgents() { await ready; return (await store.list()).filter(item => item.enabled && item.hasKey); },
+    async listAgents() { await ready; return (await store.list()).filter(isAgentReady); },
     async submit({ mainSessionId, agentId, prompt, title, signal }) {
       const workspace = await owner(mainSessionId, signal);
       if (!validId(agentId) || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100000 || (title !== undefined && (typeof title !== 'string' || title.length > 100))) throw fail('invalid-task', '请提供有效的执行者和任务描述。');
@@ -185,9 +187,13 @@ export function createTeamService({ dataDir, resolveWorkspace, providers, concur
         const agent = (await store.list()).find(item => item.id === agentId);
         signal?.throwIfAborted();
         if (closed) throw fail('team-closed', '协作服务已停止。');
-        if (!agent?.enabled || !agent.hasKey) throw fail('not-configured', '请先配置并启用该执行者。');
+        if (!isAgentReady(agent)) throw fail('not-configured', '请先配置并启用该执行者。');
         if ([...tasks.values()].filter(item => !terminal.has(item.status)).length >= maxPending || tasks.size >= 1000) throw fail('team-queue-full', '协作队列已满，请等待已有任务完成。');
-        const row = { id: `task-${randomUUID()}`, mainSessionId, agentId, agentName: agent.name, title: title?.trim() || Array.from(prompt.trim()).slice(0, 48).join(''), prompt, workspace, status: 'queued', createdAt: Date.now() };
+        const manual = agent.protocol === 'manual-web';
+        const executionMode = manual ? 'web-manual' : agent.authMode === 'none' ? 'local-api' : 'api';
+        const row = { id: `task-${randomUUID()}`, mainSessionId, agentId, agentName: agent.name, title: title?.trim() || Array.from(prompt.trim()).slice(0, 48).join(''), prompt, workspace, executionMode, status: manual ? 'awaiting-user' : 'queued', createdAt: Date.now(),
+          ...(manual ? { handoff: { url: agent.baseUrl, prompt: [agent.role?.trim(), prompt.trim()].filter(Boolean).join('\n\n') } } : {}),
+        };
         pendingAdmissions.add(row.id); tasks.set(row.id, row);
         try { await persist(); } catch (error) { pendingAdmissions.delete(row.id); tasks.delete(row.id); throw fail('team-state-unavailable', '任务未能保存，没有提交到供应商。'); }
         if (signal?.aborted || closed) {
@@ -207,19 +213,55 @@ export function createTeamService({ dataDir, resolveWorkspace, providers, concur
     async getTask(mainSessionId, taskId, signal) { await owner(mainSessionId, signal); return publicTask(owned(mainSessionId, taskId)); },
     async cancelTask(mainSessionId, taskId) {
       await owner(mainSessionId);
-      const row = owned(mainSessionId, taskId);
-      if (terminal.has(row.status)) return publicTask(row);
-      row.status = 'cancelled'; row.finishedAt = Date.now();
-      active.get(row.id)?.control.abort(fail('cancelled', '任务已取消。'));
-      await persist(); changed();
-      return publicTask(row);
+      return serializeMutation(async () => {
+        if (closed) throw fail('team-closed', '协作服务已停止。');
+        const row = owned(mainSessionId, taskId);
+        if (terminal.has(row.status)) return publicTask(row);
+        row.status = 'cancelled'; row.finishedAt = Date.now();
+        active.get(row.id)?.control.abort(fail('cancelled', '任务已取消。'));
+        await persist(); changed();
+        return publicTask(row);
+      });
+    },
+    /** UI-only handoff: a pasted answer is user-supplied evidence, never provider-verified output. */
+    async completeManualTask({ mainSessionId, taskId, text, signal }) {
+      await owner(mainSessionId, signal);
+      if (typeof text !== 'string' || !text.trim() || text.length > 100000) throw fail('invalid-answer', '请粘贴网页回答，最多 100000 个字符。');
+      return serializeMutation(async () => {
+        signal?.throwIfAborted();
+        if (closed) throw fail('team-closed', '协作服务已停止。');
+        const row = owned(mainSessionId, taskId);
+        if (row.executionMode !== 'web-manual' || row.status !== 'awaiting-user') throw fail('not-awaiting-user', '此任务已结束或不接受网页回答，请刷新查看状态。');
+        const folder = await artifactDirectory(row);
+        // Each attempt has its own file, so a crash before state persistence cannot
+        // block a retry or overwrite an earlier answer. No raw HTML is executed.
+        const name = `answer-${randomUUID()}.md`;
+        const file = path.join(folder, name);
+        let wrote = false;
+        try {
+          signal?.throwIfAborted();
+          await fs.writeFile(file, text.trim(), { flag: 'wx', mode: 0o600 }); wrote = true;
+          signal?.throwIfAborted();
+          if (closed) throw fail('team-closed', '协作服务已停止。');
+          row.result = { text: text.trim(), provenance: 'user-paste', artifacts: [{ id: `${row.id}-answer`, name, mimeType: 'text/markdown', path: file }] };
+          row.status = 'completed'; row.finishedAt = Date.now();
+          await persist();
+          changed();
+          return publicTask(row);
+        } catch (error) {
+          delete row.result; delete row.finishedAt; row.status = 'awaiting-user';
+          if (wrote) await fs.unlink(file).catch(() => {});
+          await persist().catch(() => {});
+          throw error;
+        }
+      });
     },
     async waitTasks(mainSessionId, taskIds, signal) {
       await owner(mainSessionId, signal);
       if (!Array.isArray(taskIds) || !taskIds.length || taskIds.length > 30) throw fail('invalid-task', '请选择要等待的任务。');
       const rows = taskIds.map(taskId => owned(mainSessionId, taskId));
       const deadline = Date.now() + 25000;
-      while (!rows.every(row => terminal.has(row.status)) && Date.now() < deadline && !closed) await waitForChange(signal, Math.min(1000, deadline - Date.now()));
+      while (!rows.every(row => terminal.has(row.status)) && !rows.some(row => row.status === 'awaiting-user') && Date.now() < deadline && !closed) await waitForChange(signal, Math.min(1000, deadline - Date.now()));
       signal?.throwIfAborted();
       return rows.map(row => publicTask(row));
     },
@@ -244,6 +286,7 @@ export function createTeamService({ dataDir, resolveWorkspace, providers, concur
         case 'team/tasks/list': return { tasks: await team.listTasks(payload.mainSessionId, signal) };
         case 'team/tasks/submit': return team.submit({ ...payload, signal });
         case 'team/tasks/cancel': return team.cancelTask(payload.mainSessionId, payload.taskId);
+        case 'team/tasks/complete-manual': return team.completeManualTask({ mainSessionId: payload.mainSessionId, taskId: payload.taskId, text: payload.text, signal });
         case 'team/tasks/result': {
           const row = owned(payload.mainSessionId, payload.taskId);
           const result = clone(row.result ?? { text: '', artifacts: [] });
@@ -265,7 +308,7 @@ export function createTeamService({ dataDir, resolveWorkspace, providers, concur
       closed = true;
       try { await ready; } catch { return; }
       await submitQueue.catch(() => {});
-      for (const row of tasks.values()) if (!terminal.has(row.status)) {
+      for (const row of tasks.values()) if (!terminal.has(row.status) && row.status !== 'awaiting-user') {
         row.status = 'interrupted'; row.finishedAt = Date.now(); row.error = { code: 'service-stopped', message: '服务已停止，任务没有自动重试。' };
         active.get(row.id)?.control.abort(fail('service-stopped', '服务已停止。'));
       }

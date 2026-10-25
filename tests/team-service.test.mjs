@@ -9,6 +9,7 @@ import { createTeamService } from '../src/team-service.mjs';
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
 const textOutput = text => ({ text, images: [], usage: { inputTokens: 3, outputTokens: 2 } });
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const webAgent = () => ({ id: 'web', name: '网页人工验收', role: '审查边界条件', protocol: 'manual-web', baseUrl: 'https://chat.deepseek.com', model: '', authMode: 'none', enabled: true, hasKey: false, ready: true, executionMode: 'web-manual' });
 async function until(predicate, message = 'fixture condition did not settle') {
   const deadline = Date.now() + 2500;
   while (!await predicate()) {
@@ -25,7 +26,7 @@ async function fixture(t, options = {}) {
   await Promise.all([workspace, otherWorkspace, dataDir].map(directory => fs.mkdir(directory)));
   const stateFile = path.join(dataDir, 'team-tasks.json');
   if (options.seed) await fs.writeFile(stateFile, typeof options.seed === 'string' ? options.seed : JSON.stringify(options.seed({ workspace, otherWorkspace })));
-  const agents = options.agents ?? [{ id: 'writer', name: 'Writer', role: 'Text', protocol: 'openai-compatible', enabled: true, hasKey: true }];
+  const agents = options.agents ?? [{ id: 'writer', name: 'Writer', role: 'Text', protocol: 'chat-completions', baseUrl: 'https://fixture.invalid/v1', model: 'fixture', authMode: 'api-key', enabled: true, hasKey: true }];
   const calls = [], inFlight = new Set(), providerPromises = new Set();
   let peak = 0;
   const store = {
@@ -317,4 +318,75 @@ test('lists and tool-facing reads bound long previews while the result artifact 
   assert.equal(await fs.readFile(artifact.path, 'utf8'), complete);
   const explicit = await f.team.dispatch('team/tasks/result', { mainSessionId: 'main', taskId: task.id });
   assert.equal(explicit.text, complete);
+});
+
+test('web delegation stores a handoff without issuing a provider request or waiting for a worker', async t => {
+  const f = await fixture(t, { agents: [webAgent()] });
+  assert.equal((await f.team.listAgents())[0].id, 'web');
+  const task = await f.submit('检查边界', { agentId: 'web' });
+  assert.equal(task.status, 'awaiting-user');
+  assert.equal(task.executionMode, 'web-manual');
+  assert.deepEqual(task.handoff, { url: 'https://chat.deepseek.com', prompt: '审查边界条件\n\n检查边界' });
+  f.agents[0].baseUrl = 'https://www.doubao.com/chat/';
+  f.agents[0].role = 'different';
+  assert.deepEqual((await f.team.getTask('main', task.id)).handoff, task.handoff, 'handoff is a submission snapshot');
+  const waited = await f.team.waitTasks('main', [task.id], AbortSignal.timeout(500));
+  assert.equal(waited[0].status, 'awaiting-user');
+  assert.equal(f.calls.length, 0);
+});
+
+test('manual answer completion is owned, durable, marked as pasted, and cannot overwrite a result', async t => {
+  const f = await fixture(t, { agents: [webAgent()] });
+  const task = await f.submit('review', { agentId: 'web' });
+  await assert.rejects(f.team.completeManualTask({ mainSessionId: 'other', taskId: task.id, text: 'wrong owner' }), error => error.code === 'team-task-not-found');
+  for (const text of ['', '   ', 'A'.repeat(100001)]) await assert.rejects(f.team.completeManualTask({ mainSessionId: 'main', taskId: task.id, text }), error => error.code === 'invalid-answer');
+  const answer = '<script>untrusted source text</script>\nlocal test answer';
+  const finished = await f.team.dispatch('team/tasks/complete-manual', { mainSessionId: 'main', taskId: task.id, text: answer });
+  assert.equal(finished.status, 'completed');
+  assert.equal(finished.result.provenance, 'user-paste');
+  assert.equal(finished.result.text, answer);
+  assert.equal(await fs.readFile(finished.result.artifacts[0].path, 'utf8'), answer);
+  assert.equal(f.calls.length, 0);
+  await assert.rejects(f.team.completeManualTask({ mainSessionId: 'main', taskId: task.id, text: 'replacement' }), error => error.code === 'not-awaiting-user');
+  await f.restart();
+  assert.deepEqual((await f.team.getTask('main', task.id)).result, finished.result);
+});
+
+test('waiting web tasks survive restart and do not occupy automatic worker slots', async t => {
+  const writer = { id: 'writer', name: 'Writer', protocol: 'chat-completions', baseUrl: 'https://fixture.invalid/v1', model: 'fixture', enabled: true, hasKey: true };
+  const f = await fixture(t, { agents: [webAgent(), writer], concurrency: 1 });
+  const manual = await f.submit('manual', { agentId: 'web' });
+  const automatic = await f.submit('automatic');
+  await until(() => f.calls.length === 1);
+  assert.equal(f.calls[0].agentId, 'writer');
+  await f.restart();
+  assert.equal((await f.team.getTask('main', manual.id)).status, 'awaiting-user');
+  assert.equal((await f.team.getTask('main', automatic.id)).status, 'interrupted');
+  assert.equal(f.calls.length, 1, 'restart does not issue another request');
+});
+
+test('cancellation and duplicate completions cannot overwrite a manual result', async t => {
+  const f = await fixture(t, { agents: [webAgent()] });
+  const cancelled = await f.submit('cancel', { agentId: 'web' });
+  await f.team.cancelTask('main', cancelled.id);
+  await assert.rejects(f.team.completeManualTask({ mainSessionId: 'main', taskId: cancelled.id, text: 'late answer' }), error => error.code === 'not-awaiting-user');
+  const task = await f.submit('duplicate', { agentId: 'web' });
+  const results = await Promise.allSettled(['first', 'second'].map(text => f.team.completeManualTask({ mainSessionId: 'main', taskId: task.id, text })));
+  assert.equal(results.filter(value => value.status === 'fulfilled').length, 1);
+  assert.equal(results.filter(value => value.status === 'rejected')[0].reason.code, 'not-awaiting-user');
+  const completed = results.find(value => value.status === 'fulfilled').value;
+  assert.equal((await f.team.cancelTask('main', task.id)).result.text, completed.result.text);
+  assert.equal((await fs.readdir(path.dirname(completed.result.artifacts[0].path))).length, 1);
+});
+
+test('manual completion cannot complete an API task and aborted submission keeps the handoff', async t => {
+  const f = await fixture(t);
+  const apiTask = await f.submit('api task');
+  await assert.rejects(f.team.completeManualTask({ mainSessionId: 'main', taskId: apiTask.id, text: 'fake provider result' }), error => error.code === 'not-awaiting-user');
+  f.agents.push(webAgent());
+  const manual = await f.submit('manual', { agentId: 'web' });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(f.team.completeManualTask({ mainSessionId: 'main', taskId: manual.id, text: 'answer', signal: controller.signal }));
+  assert.equal((await f.team.getTask('main', manual.id)).status, 'awaiting-user');
+  await assert.rejects(fs.access(path.join(f.workspace, 'outputs', 'sidecar-agents', manual.id)));
 });

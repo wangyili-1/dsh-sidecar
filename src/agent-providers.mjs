@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { isAgentReady, isLoopbackAgentUrl, isManualWebUrl } from './agent-resources.mjs';
 
 // Protocol references checked 2026-10-26:
 // https://docs.bigmodel.cn/api-reference/模型-api/对话补全
@@ -14,8 +15,8 @@ const runFile = promisify(execFile);
 const queues = new Map();
 const MIB = 1024 * 1024;
 const MAX_PROFILES = 32;
-const fields = ['id', 'name', 'role', 'protocol', 'baseUrl', 'model', 'apiKeyEnv', 'apiVersion', 'enabled', 'timeoutMs', 'maxOutputTokens'];
-const acceptedFields = new Set([...fields, 'hasKey', 'apiKey']);
+const fields = ['id', 'name', 'role', 'protocol', 'authMode', 'baseUrl', 'model', 'apiKeyEnv', 'apiVersion', 'enabled', 'timeoutMs', 'maxOutputTokens'];
+const acceptedFields = new Set([...fields, 'hasKey', 'ready', 'executionMode', 'apiKey']);
 const messages = {
   'invalid-profile': 'Agent configuration contains invalid or unsupported fields.',
   'invalid-endpoint': 'Use an HTTPS base URL without credentials, query, or fragment; HTTP is allowed only for an explicit loopback address.',
@@ -23,6 +24,8 @@ const messages = {
   'invalid-signal': 'The cancellation signal is invalid.',
   'agent-not-found': 'The selected agent no longer exists.',
   'agent-disabled': 'Enable the selected agent before running it.',
+  'manual-web-only': 'This is a manual website resource. Open it yourself and paste the result back; no API request was made.',
+  'invalid-auth-mode': 'No-key API access is restricted to explicit loopback Chat Completions or Responses endpoints.',
   'missing-api-key': 'Configure an API key or its environment variable for this agent.',
   'invalid-api-key': 'The configured API key has an invalid format.',
   'store-unavailable': 'The local agent configuration could not be read or saved.',
@@ -69,8 +72,9 @@ function endpoint(value) {
   if (typeof value !== 'string' || value.length > 2048 || /[\s\\?#]/u.test(value)) throw failure('invalid-endpoint');
   let url;
   try { url = new URL(value); } catch { throw failure('invalid-endpoint'); }
+  const authority = value.match(/^https?:\/\/([^/]+)/i)?.[1];
   const explicitLoopback = /^http:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?:\/|$)/i.test(value);
-  if (url.username || url.password || url.search || url.hash || !url.hostname ||
+  if (!authority || authority.includes('@') || url.username || url.password || url.search || url.hash || !url.hostname ||
       (url.protocol !== 'https:' && !(url.protocol === 'http:' && explicitLoopback))) throw failure('invalid-endpoint');
   return url.href.replace(/\/+$/, '');
 }
@@ -82,19 +86,31 @@ function keyText(value) {
 }
 function profileOf(input, previous = {}) {
   if (!record(input) || Object.keys(input).some(key => !acceptedFields.has(key))) throw failure('invalid-profile');
-  const value = { role: '', apiKeyEnv: '', apiVersion: '2023-06-01', enabled: false, timeoutMs: 120000, maxOutputTokens: 4096, ...previous, ...input };
+  const value = { role: '', model: '', authMode: 'api-key', apiKeyEnv: '', apiVersion: '2023-06-01', enabled: false, timeoutMs: 120000, maxOutputTokens: 4096, ...previous, ...input };
+  const manual = value.protocol === 'manual-web';
   const profile = {
     id: agentId(value.id), name: text(value.name, 80), role: text(value.role, 8000, true),
-    protocol: value.protocol, baseUrl: endpoint(value.baseUrl), model: text(value.model, 160, true),
-    apiKeyEnv: text(value.apiKeyEnv, 128, true), apiVersion: text(value.apiVersion, 20), enabled: value.enabled,
+    protocol: value.protocol, authMode: manual ? 'none' : value.authMode, baseUrl: endpoint(value.baseUrl), model: text(value.model, 160, true),
+    apiKeyEnv: manual || value.authMode === 'none' ? '' : text(value.apiKeyEnv, 128, true), apiVersion: text(value.apiVersion, 20), enabled: value.enabled,
     timeoutMs: value.timeoutMs, maxOutputTokens: value.maxOutputTokens,
   };
-  if (!['chat-completions', 'responses', 'images', 'anthropic-messages'].includes(profile.protocol) || typeof profile.enabled !== 'boolean' ||
-      (profile.enabled && !profile.model) || (profile.apiKeyEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(profile.apiKeyEnv)) ||
+  if (!['chat-completions', 'responses', 'images', 'anthropic-messages', 'manual-web'].includes(profile.protocol) || typeof profile.enabled !== 'boolean' ||
+      (profile.enabled && !manual && !profile.model) || (profile.apiKeyEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(profile.apiKeyEnv)) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(profile.apiVersion) ||
       !Number.isInteger(profile.timeoutMs) || profile.timeoutMs < 1000 || profile.timeoutMs > 600000 ||
       !Number.isInteger(profile.maxOutputTokens) || profile.maxOutputTokens < 1 || profile.maxOutputTokens > 65536) throw failure('invalid-profile');
-  // A blank password field preserves a saved key. Only remove() deletes it.
+  if (manual && !isManualWebUrl(profile.baseUrl)) throw failure('invalid-endpoint');
+  if (!['api-key', 'none'].includes(profile.authMode) || (profile.authMode === 'none' && !manual &&
+      (!['chat-completions', 'responses'].includes(profile.protocol) || !isLoopbackAgentUrl(value.baseUrl)))) throw failure('invalid-auth-mode');
+  if (profile.authMode === 'none') {
+    // Manual resources and explicitly local no-auth profiles never retain a
+    // dormant credential that could later follow a profile to a remote server.
+    profile.apiKey = '';
+    profile.apiKeyEnv = '';
+    return profile;
+  }
+  // A blank password field preserves a saved key only while its destination and
+  // authentication mode remain compatible with the saved credential.
   const changedEndpoint = previous.baseUrl && previous.baseUrl !== profile.baseUrl;
   profile.apiKey = (own(input, 'apiKey') ? keyText(input.apiKey) : '') || (!changedEndpoint ? previous.apiKey : '') || '';
   // An unchanged environment field copied by the settings form is not renewed
@@ -312,8 +328,16 @@ export function createAgentProviderStore({ dataDir, env = process.env, fetchImpl
   const directory = path.join(path.resolve(dataDir), 'agent-providers');
   const filename = path.join(directory, 'profiles.json');
   const read = () => readProfiles(directory, filename);
-  const keyFor = profile => profile.apiKey || (profile.apiKeyEnv && own(env, profile.apiKeyEnv) ? env[profile.apiKeyEnv] : '') || '';
-  const publicProfile = profile => ({ ...Object.fromEntries(fields.map(key => [key, profile[key]])), hasKey: typeof keyFor(profile) === 'string' && !!keyFor(profile).trim() });
+  const keyFor = profile => profile.authMode === 'none' ? '' : profile.apiKey || (profile.apiKeyEnv && own(env, profile.apiKeyEnv) ? env[profile.apiKeyEnv] : '') || '';
+  const publicProfile = profile => {
+    const key = keyFor(profile);
+    const result = { ...Object.fromEntries(fields.map(field => [field, profile[field]])), hasKey: typeof key === 'string' && !!key.trim(),
+      executionMode: profile.protocol === 'manual-web' ? 'web-manual' : profile.authMode === 'none' ? 'local-api' : 'api' };
+    let validKey = profile.authMode === 'none';
+    if (!validKey) try { validKey = Boolean(keyText(key)); } catch { /* Invalid environment values are not usable credentials. */ }
+    result.ready = validKey && isAgentReady({ ...result, enabled: true });
+    return result;
+  };
   return {
     async list() { return serialize(filename, async () => (await read()).map(publicProfile)); },
     async save(input) {
@@ -322,7 +346,7 @@ export function createAgentProviderStore({ dataDir, env = process.env, fetchImpl
         const profiles = await read();
         const previous = profiles.find(value => value.id === input?.id);
         const profile = profileOf({ ...input, id: input.id ?? `agent-${randomUUID()}` }, previous);
-        if (profile.enabled && !keyText(keyFor(profile))) throw failure('missing-api-key');
+        if (profile.enabled && profile.authMode === 'api-key' && !keyText(keyFor(profile))) throw failure('missing-api-key');
         if (!previous && profiles.length >= MAX_PROFILES) throw failure('too-many-agents');
         const next = previous ? profiles.map(value => value.id === profile.id ? profile : value) : [...profiles, profile];
         await writeProfiles(directory, filename, next);
@@ -346,8 +370,9 @@ export function createAgentProviderStore({ dataDir, env = process.env, fetchImpl
       const profile = await serialize(filename, async () => (await read()).find(value => value.id === id));
       if (!profile) throw failure('agent-not-found');
       if (!profile.enabled) throw failure('agent-disabled');
-      const key = keyText(keyFor(profile));
-      if (!key) throw failure('missing-api-key');
+      if (profile.protocol === 'manual-web') throw failure('manual-web-only');
+      const key = profile.authMode === 'none' ? '' : keyText(keyFor(profile));
+      if (profile.authMode === 'api-key' && !key) throw failure('missing-api-key');
       const { suffix, body } = requestOf(profile, prompt);
       const controller = new AbortController();
       const abort = () => controller.abort(failure('aborted'));
@@ -359,7 +384,7 @@ export function createAgentProviderStore({ dataDir, env = process.env, fetchImpl
         const operation = (async () => {
           const response = await fetchImpl(profile.baseUrl + suffix, {
             method: 'POST', redirect: 'error', signal: controller.signal,
-            headers: { 'Content-Type': 'application/json', ...(profile.protocol === 'anthropic-messages'
+            headers: { 'Content-Type': 'application/json', ...(profile.authMode === 'none' ? {} : profile.protocol === 'anthropic-messages'
               ? { 'x-api-key': key, 'anthropic-version': profile.apiVersion }
               : { Authorization: `Bearer ${key}` }) }, body: JSON.stringify(body),
           });

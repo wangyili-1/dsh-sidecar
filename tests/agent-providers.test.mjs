@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createAgentProviderStore } from '../src/agent-providers.mjs';
+import { RESOURCE_PRESETS, isAgentReady, isLoopbackAgentUrl, isManualWebUrl } from '../src/agent-resources.mjs';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9WQAAAAASUVORK5CYII=';
 const reply = (value, init = {}) => new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' }, ...init });
@@ -369,5 +370,147 @@ test('corrupt local data is not overwritten or echoed in errors', async () => {
       });
     }
     assert.equal(await readFile(filename, 'utf8'), broken);
+  });
+});
+
+test('resource catalog describes manual websites and opt-in local models without changing existing agents', async () => {
+  assert.equal(RESOURCE_PRESETS.length, 5);
+  assert.equal(new Set(RESOURCE_PRESETS.map(value => value.id)).size, 5);
+  const websites = RESOURCE_PRESETS.filter(value => value.profile.protocol === 'manual-web');
+  assert.equal(websites.length, 4);
+  for (const resource of websites) {
+    assert.equal(resource.profile.authMode, 'none');
+    assert.equal(resource.profile.model, '');
+    assert.equal(isAgentReady(resource.profile), true);
+    assert.equal(isManualWebUrl(resource.docsUrl), true);
+    assert.equal(Object.hasOwn(resource.profile, 'apiKey'), false);
+  }
+  const local = RESOURCE_PRESETS.find(value => value.id === 'ollama-local');
+  assert.equal(local.profile.baseUrl, 'http://127.0.0.1:11434/v1');
+  assert.equal(local.profile.enabled, false);
+  assert.equal(local.profile.model, '');
+  assert.equal(isAgentReady({ ...local.profile, enabled: true }), false);
+  assert.equal(isAgentReady({ ...local.profile, enabled: true, model: 'installed-local-model' }), true);
+  await fixture(async ({ store }) => assert.deepEqual((await store.list()).map(value => value.id), ['glm', 'qwen', 'openai-image', 'claude']));
+});
+
+test('readiness validates configuration independently of claimed ready state and supports legacy API profiles', () => {
+  const legacy = profile({ hasKey: true });
+  assert.equal(isAgentReady(legacy), true);
+  assert.equal(isAgentReady({ ...legacy, ready: true }), true);
+  for (const extra of [{ enabled: false }, { ready: false }, { ready: 'true' }, { hasKey: false, ready: true }, { model: '' }, { protocol: 'unknown' }, { authMode: 'unknown' }, { baseUrl: 'http://remote.example/v1' }, { baseUrl: 'https://@provider.example/v1' }, { baseUrl: 'https://provider.example/v1?' }]) {
+    assert.equal(isAgentReady({ ...legacy, ...extra }), false, JSON.stringify(extra));
+  }
+  const local = { ...legacy, authMode: 'none', hasKey: false, baseUrl: 'http://127.0.0.1:11434/v1' };
+  assert.equal(isAgentReady(local), true);
+  assert.equal(isAgentReady({ ...local, protocol: 'responses' }), true);
+  for (const extra of [{ protocol: 'images' }, { protocol: 'anthropic-messages' }, { baseUrl: 'https://remote.example/v1' }, { baseUrl: 'http://2130706433/v1' }, { baseUrl: 'https://127.1/v1' }, { baseUrl: 'http://localhost.evil.example/v1' }]) {
+    assert.equal(isAgentReady({ ...local, ready: true, ...extra }), false, JSON.stringify(extra));
+  }
+  const manual = { enabled: true, protocol: 'manual-web', authMode: 'none', baseUrl: 'https://another-resource.example/chat/', model: '', hasKey: false };
+  assert.equal(isAgentReady(manual), true);
+  for (const baseUrl of ['http://localhost/chat', 'https://user:secret@example.com/', 'https://@example.com/', 'https://example.com/?q=1', 'https://example.com/#x', 'https://example.com\\@other.example/', 'javascript:alert(1)']) {
+    assert.equal(isAgentReady({ ...manual, ready: true, baseUrl }), false);
+    assert.equal(isManualWebUrl(baseUrl), false);
+  }
+  for (const url of ['http://localhost:11434/v1', 'http://127.0.0.1:11434/v1', 'https://[::1]:11434/v1']) assert.equal(isLoopbackAgentUrl(url), true);
+  for (const url of ['http://127.1/v1', 'http://2130706433/v1', 'https://0x7f000001/v1', 'http://127.0.0.999/v1', 'http://127.0.0.1@remote.example/v1']) assert.equal(isLoopbackAgentUrl(url), false);
+});
+
+test('manual web resources save without a model, clear credentials and never call an API', async () => {
+  let calls = 0;
+  let envReads = 0;
+  const env = Object.defineProperty({}, 'FIXTURE_KEY', { get() { envReads++; throw new Error('No-key resource must not read credentials'); } });
+  await fixture(async ({ store, filename, dataDir }) => {
+    const created = await store.save({ name: 'Another manual resource', protocol: 'manual-web', baseUrl: 'https://another-resource.example/chat/', enabled: true, apiKey: 'unused\r\nvalue', apiKeyEnv: 'FIXTURE_KEY' });
+    assert.equal(created.model, '');
+    assert.equal(created.authMode, 'none');
+    assert.equal(created.apiKeyEnv, '');
+    assert.equal(created.hasKey, false);
+    assert.equal(created.ready, true);
+    assert.equal(created.executionMode, 'web-manual');
+    assert.equal(isAgentReady(created), true);
+    assert.equal(created.apiKey, undefined);
+    await assert.rejects(store.execute({ agentId: created.id, prompt: 'Do not send this anywhere' }), rejected('manual-web-only'));
+    await store.save(profile({ apiKey: 'fixture-before-manual', apiKeyEnv: '' }));
+    const converted = await store.save({ id: 'fixture-agent', protocol: 'manual-web', baseUrl: 'https://another-resource.example/chat', model: '', apiKeyEnv: 'FIXTURE_KEY' });
+    assert.equal(converted.hasKey, false);
+    const source = await readFile(filename, 'utf8');
+    assert.ok(!source.includes('fixture-before-manual'));
+    assert.ok(!source.includes('FIXTURE_KEY'));
+    assert.ok(!source.includes('unused'));
+    const fresh = createAgentProviderStore({ dataDir, env });
+    const saved = (await fresh.list()).find(value => value.id === converted.id);
+    assert.equal(saved.ready, true);
+    assert.equal(saved.hasKey, false);
+    await assert.rejects(store.save({ id: converted.id, protocol: 'chat-completions', authMode: 'api-key', baseUrl: 'https://provider.example/v1', model: 'explicit-fixture-model' }), rejected('missing-api-key'));
+    assert.equal(calls, 0);
+    assert.equal(envReads, 0);
+  }, { env, fetchImpl: async () => { calls++; return reply(answer()); } });
+});
+
+test('no-key local Chat Completions and Responses omit credentials and use the configured model', async () => {
+  let envReads = 0;
+  const env = Object.defineProperty({}, 'FIXTURE_KEY', { get() { envReads++; throw new Error('Local API must not read credentials'); } });
+  const requests = [];
+  await fixture(async ({ store, filename }) => {
+    for (const protocol of ['chat-completions', 'responses']) {
+      const saved = await store.save(profile({ protocol, baseUrl: 'http://127.0.0.1:11434/v1', authMode: 'none', apiKey: 'discard-this-fixture-key', model: 'installed-local-model' }));
+      assert.equal(saved.hasKey, false);
+      assert.equal(saved.apiKeyEnv, '');
+      assert.equal(saved.ready, true);
+      assert.equal(saved.executionMode, 'local-api');
+      assert.equal((await store.execute({ agentId: saved.id, prompt: 'Local fixture question' })).text, 'Local final');
+      assert.equal((await store.list()).find(value => value.id === saved.id).ready, true);
+    }
+    assert.equal(envReads, 0);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].url, 'http://127.0.0.1:11434/v1/chat/completions');
+    assert.equal(requests[1].url, 'http://127.0.0.1:11434/v1/responses');
+    for (const request of requests) {
+      assert.deepEqual(request.headers, { 'Content-Type': 'application/json' });
+      assert.equal(request.body.model, 'installed-local-model');
+      assert.equal(request.redirect, 'error');
+    }
+    assert.ok(!(await readFile(filename, 'utf8')).includes('discard-this-fixture-key'));
+    await assert.rejects(store.save({ id: 'fixture-agent', authMode: 'api-key' }), rejected('missing-api-key'));
+  }, { env, fetchImpl: async (url, options) => {
+    requests.push({ url, headers: options.headers, body: JSON.parse(options.body), redirect: options.redirect });
+    return reply(url.endsWith('/responses') ? { status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Local final' }] }] } : answer('Local final'));
+  } });
+});
+
+test('no-key mode cannot enable remote API access or unsupported local protocols', async () => {
+  await fixture(async ({ store }) => {
+    for (const extra of [{ baseUrl: 'https://provider.example/v1' }, { baseUrl: 'https://127.1/v1' }, { baseUrl: 'https://2130706433/v1' }, { protocol: 'images', baseUrl: 'http://localhost:11434/v1' }, { protocol: 'anthropic-messages', baseUrl: 'http://localhost:11434/v1' }]) {
+      await assert.rejects(store.save(profile({ authMode: 'none', ready: true, hasKey: true, ...extra })), rejected('invalid-auth-mode'));
+    }
+    for (const baseUrl of ['http://localhost:11434/chat', 'https://user:password@example.com/', 'https://@example.com/', 'https://example.com/?q=1', 'https://example.com/#x']) {
+      await assert.rejects(store.save(profile({ protocol: 'manual-web', model: '', baseUrl })), rejected('invalid-endpoint'));
+    }
+    await assert.rejects(store.save(profile({ authMode: 'none', baseUrl: 'http://localhost:11434/v1', model: '' })), rejected('invalid-profile'));
+    await assert.rejects(store.save(profile({ ready: true, hasKey: true })), rejected('missing-api-key'));
+  });
+});
+
+test('public readiness excludes enablement while hasKey keeps its literal credential meaning', async () => {
+  await fixture(async ({ store, env }) => {
+    const configured = await store.save(profile({ enabled: false, apiKey: 'fixture-configured' }));
+    assert.equal(configured.hasKey, true);
+    assert.equal(configured.ready, true);
+    assert.equal(configured.executionMode, 'api');
+    assert.equal(isAgentReady(configured), false);
+    const manual = await store.save({ name: 'Disabled manual', protocol: 'manual-web', baseUrl: 'https://example.com/chat', enabled: false });
+    assert.equal(manual.ready, true);
+    assert.equal(manual.hasKey, false);
+    assert.equal(isAgentReady(manual), false);
+    const local = await store.save(profile({ id: 'local', authMode: 'none', baseUrl: 'http://localhost:11434/v1', enabled: false, model: '' }));
+    assert.equal(local.ready, false);
+    assert.equal(local.hasKey, false);
+    env.OPENAI_API_KEY = 'fixture\r\ninvalid';
+    const invalidKey = (await store.list()).find(value => value.id === 'openai-image');
+    assert.equal(invalidKey.hasKey, true);
+    assert.equal(invalidKey.ready, false);
+    assert.equal(isAgentReady({ ...invalidKey, enabled: true }), false);
   });
 });

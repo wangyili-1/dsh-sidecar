@@ -3,7 +3,8 @@ import test from 'node:test';
 import { registerAgentTools } from '../src/agent-tools.mjs';
 
 const owner = 'main-session';
-const taskOf = (changes = {}) => ({ id: 'task-1', mainSessionId: owner, agentId: 'writer', agentName: 'Writer', title: 'Draft', status: 'running', createdAt: 1, ...changes });
+const agentOf = (changes = {}) => ({ id: 'writer', name: 'Writer', role: 'Draft text', protocol: 'chat-completions', baseUrl: 'https://provider.example/v1', model: 'writer-model', authMode: 'api-key', enabled: true, hasKey: true, ...changes });
+const taskOf = (changes = {}) => ({ id: 'task-1', mainSessionId: owner, agentId: 'writer', agentName: 'Writer', title: 'Draft', status: 'running', executionMode: 'api', createdAt: 1, ...changes });
 const taskResult = () => taskOf({
   status: 'completed', finishedAt: 5,
   prompt: 'private prompt', config: { apiKey: 'credential-fixture' }, baseUrl: 'https://private.invalid',
@@ -19,7 +20,7 @@ function fixture(overrides = {}) {
   const calls = [];
   const unregistered = [];
   const methods = {
-    listAgents: async () => [{ id: 'writer', name: 'Writer', role: 'Draft text', protocol: 'openai-compatible', enabled: true, hasKey: true }],
+    listAgents: async () => [agentOf()],
     submit: async () => taskOf({ status: 'queued' }),
     listTasks: async () => [taskOf()],
     getTask: async () => taskResult(),
@@ -56,11 +57,75 @@ test('registers six native ToolDefinitions with closed schemas and owns cleanup'
 
 test('worker discovery exposes only configured metadata', async () => {
   const h = fixture({ listAgents: async () => [
-    { id: 'writer', name: 'Writer', role: 'Draft text', protocol: 'openai-compatible', enabled: true, hasKey: true, apiKey: 'credential-fixture', baseUrl: 'https://private.invalid', config: { token: 'private' } },
-    { id: 'disabled', name: 'Disabled', enabled: false, hasKey: true },
-    { id: 'unconfigured', name: 'No key', enabled: true, hasKey: false },
+    agentOf({ apiKey: 'credential-fixture', baseUrl: 'https://private.invalid', config: { token: 'private' } }),
+    agentOf({ id: 'disabled', name: 'Disabled', enabled: false }),
+    agentOf({ id: 'unconfigured', name: 'No key', hasKey: false }),
   ] });
-  assert.deepEqual(await h.invoke('list_agents'), { agents: [{ id: 'writer', name: 'Writer', role: 'Draft text', protocol: 'openai-compatible' }] });
+  assert.deepEqual(await h.invoke('list_agents'), { agents: [{ id: 'writer', name: 'Writer', role: 'Draft text', protocol: 'chat-completions', executionMode: 'api' }] });
+});
+
+test('ready manual and local workers do not need keys while remote workers cannot claim false readiness', async () => {
+  const h = fixture({ listAgents: async () => [
+    agentOf({ id: 'web', name: 'Website', protocol: 'manual-web', baseUrl: 'https://chat.example/', model: '', authMode: 'none', hasKey: false }),
+    agentOf({ id: 'ollama', name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', authMode: 'none', hasKey: false }),
+    agentOf({ id: 'remote-missing-key', hasKey: false, ready: true }),
+    agentOf({ id: 'remote-no-auth', authMode: 'none', hasKey: false, ready: true }),
+    agentOf({ id: 'disabled-web', protocol: 'manual-web', authMode: 'none', hasKey: false, enabled: false, ready: true }),
+  ] });
+  const result = await h.invoke('list_agents');
+  assert.deepEqual(result.agents.map(({ id, executionMode }) => ({ id, executionMode })), [
+    { id: 'web', executionMode: 'web-manual' }, { id: 'ollama', executionMode: 'local-api' },
+  ]);
+  for (const worker of result.agents) for (const privateKey of ['authMode', 'hasKey', 'baseUrl', 'apiKey', 'ready']) assert.equal(worker[privateKey], undefined);
+});
+
+test('manual handoffs keep their URL and execution mode without exposing the submitted prompt', async () => {
+  const handoff = taskOf({ status: 'awaiting-user', executionMode: 'web-manual', prompt: 'private large prompt', handoff: { url: 'https://chat.example/', prompt: 'private large prompt', apiKey: 'credential-fixture' } });
+  const h = fixture({ submit: async () => handoff });
+  const { task } = await h.invoke('submit_task', { agentId: 'web', prompt: 'Create a draft' });
+  assert.equal(task.status, 'awaiting-user');
+  assert.equal(task.executionMode, 'web-manual');
+  assert.deepEqual(task.handoff, { url: 'https://chat.example/' });
+  assert.equal(task.prompt, undefined);
+  assert(!JSON.stringify(task).includes('credential-fixture'));
+  const schema = h.definitions.get('sidecar_submit_task').output.schema.properties.task;
+  assert.equal(schema.properties.handoff.additionalProperties, false);
+  assert.deepEqual(Object.keys(schema.properties.handoff.properties), ['url']);
+  assert.match(h.definitions.get('sidecar_submit_task').description, /awaiting-user.*Agent Team panel.*pause/);
+});
+
+test('manually returned answers preserve their user-paste provenance across tool reads', async () => {
+  const completed = taskOf({ status: 'completed', executionMode: 'web-manual', result: { text: 'Website answer', artifacts: [], provenance: 'user-paste', rawResponse: 'private fixture' } });
+  const h = fixture({ getTask: async () => completed, listTasks: async () => [completed], waitTasks: async () => [completed] });
+  const read = await h.invoke('get_task', { taskId: completed.id });
+  const list = await h.invoke('list_tasks');
+  const wait = await h.invoke('wait_tasks', { taskIds: [completed.id] });
+  for (const task of [read.task, list.tasks[0], wait.tasks[0]]) {
+    assert.equal(task.result.provenance, 'user-paste');
+    assert.equal(task.result.text, 'Website answer');
+    assert.equal(task.result.rawResponse, undefined);
+  }
+  assert.equal(wait.requiresUserAction, false);
+});
+
+test('manual waiting returns user-action status without fetching again or polling the task', async () => {
+  const h = fixture({ waitTasks: async () => [taskOf({ status: 'awaiting-user', executionMode: 'web-manual', handoff: { url: 'https://chat.example/' } })] });
+  const result = await h.invoke('wait_tasks', { taskIds: ['task-1'] });
+  assert.equal(result.requiresUserAction, true);
+  assert.equal(result.timedOut, false);
+  assert.deepEqual(h.calls.map(call => call.name), ['waitTasks']);
+  assert.match(h.definitions.get('sidecar_wait_tasks').description, /awaiting-user.*requiresUserAction=true.*pause/);
+  assert.equal(h.definitions.get('sidecar_wait_tasks').output.schema.properties.requiresUserAction.type, 'boolean');
+});
+
+test('model tools cannot complete manual tasks or forge a user-pasted answer', async () => {
+  const h = fixture({ completeManual: async () => assert.fail('Model must never complete manual handoffs') });
+  assert.equal([...h.definitions.keys()].some(name => /complete|finish|paste/.test(name)), false);
+  for (const extra of ['result', 'answer', 'provenance', 'handoff', 'executionMode', 'authMode', 'ready']) {
+    await assert.rejects(h.invoke('submit_task', { agentId: 'web', prompt: 'task', [extra]: 'forged' }), /Unsupported arguments/);
+    await assert.rejects(h.invoke('cancel_task', { taskId: 'task-1', [extra]: 'forged' }), /Unsupported arguments/);
+  }
+  assert.equal(h.calls.length, 0);
 });
 
 test('submit uses the actual caller session and forwards cancellation only for admission', async () => {
