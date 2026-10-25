@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyn
 import { parsePropertyLabSummary } from './propertylab-summary.mjs';
 import { terminalSessionStore } from './terminal-session-store.mjs';
 import { previewUserMessage } from './message-preview.mjs';
+import ComposerBar from './ComposerBar.jsx';
 import './panel.css';
 
 const STALE = Symbol('stale-sidecar-request');
@@ -492,6 +493,8 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedS
   const mainTitle = state?.main?.title || '当前主会话';
   const sortedEntries = [...(directory.entries || [])].sort((a, b) => (a.type === 'directory' ? 0 : 1) - (b.type === 'directory' ? 0 : 1) || a.name.localeCompare(b.name));
   const tabId = useId();
+  const inputElement = <textarea ref={composerInput} aria-label="侧聊消息输入" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); sendSidechat(); } }} placeholder={surface ? (sideId ? '发消息或做任务…' : '先新建侧聊') : sideId ? '向侧聊提问，整理思路…' : '先新建一个侧聊，即可开始讨论'} disabled={!sideId} rows={3}/>;
+  const submitElement = conversation?.running ? <button className={`dsh-sc-small-button${surface ? ' dsh-sc-action-icon' : ''}`} aria-label="停止侧聊" title={cancelling ? '停止中' : '停止侧聊'} onClick={cancelSidechat} disabled={cancelling}><Icon name="stop" size={surface ? 15 : 12}/>{!surface && (cancelling ? '停止中' : '停止侧聊')}</button> : <button className={`dsh-sc-send-button${surface ? ' dsh-sc-action-icon' : ''}`} aria-label="发送到侧聊" title={sending && sending === sideId ? '发送中' : '发送（Ctrl / ⌘ Enter）'} onClick={sendSidechat} disabled={!sideId || !draft.trim() || Boolean(sending)}><Icon name={surface ? 'up' : 'send'} size={surface ? 17 : 15}/>{!surface && (sending && sending === sideId ? '发送中' : '发送')}</button>;
 
   return <aside className={`dsh-sidecar${surface ? ' dsh-sc-surface' : ''}${isDragging ? ' is-resizing' : ''}`} aria-label={surface ? ({files:'文件内容页',terminal:'终端内容页',browser:'网页内容页',chat:'侧聊内容页'})[surface] : 'Sidecar 右栏'}>
     {!surface && <PanelHeading onClose={onClose}/>}
@@ -533,7 +536,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedS
         </div>
         <div className="dsh-sc-compose-area">
           {packets.length > 0 && <div className="dsh-sc-packets"><button className="dsh-sc-packets-heading" title="审阅上下文包" aria-label="审阅上下文包" aria-expanded={packetsOpen} onClick={() => setPacketsOpen((value) => !value)}><Icon name="packet" size={14}/><strong>{surface ? '引用' : '上下文包'}</strong><span>{packets.length}</span>{!surface && <small>发送前可审阅</small>}<Icon name="chevron" size={12} className={packetsOpen ? 'is-rotated' : ''}/></button>{packetsOpen && <div className="dsh-sc-packet-list">{packets.map((packet) => <div className="dsh-sc-packet" key={packet._id}><details><summary><span className="dsh-sc-packet-kind">{({ file: '文件', terminal: '终端', web: '网页', message: '消息' })[packet.kind] || packet.kind}</span><span title={packet.source}>{packet.source}</span>{packet.startLine && <small>L{packet.startLine}–{packet.endLine}</small>}</summary><pre>{packet.text}</pre></details><button className="dsh-sc-icon-button" aria-label={`移除上下文 ${packet.source}`} title="移除此上下文" onClick={() => setPackets((current) => current.filter((item) => item._id !== packet._id))}><Icon name="close" size={12}/></button></div>)}</div>}</div>}
-          <div className="dsh-sc-composer"><textarea ref={composerInput} aria-label="侧聊消息输入" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); sendSidechat(); } }} placeholder={surface ? (sideId ? '发送消息…' : '先新建侧聊') : sideId ? '向侧聊提问，整理思路…' : '先新建一个侧聊，即可开始讨论'} disabled={!sideId} rows={3}/><div className="dsh-sc-composer-actions">{!surface && <span>Ctrl / ⌘ Enter 发送</span>}{conversation?.running ? <button className={`dsh-sc-small-button${surface ? ' dsh-sc-action-icon' : ''}`} aria-label="停止侧聊" title={cancelling ? '停止中' : '停止侧聊'} onClick={cancelSidechat} disabled={cancelling}><Icon name="stop" size={surface ? 15 : 12}/>{!surface && (cancelling ? '停止中' : '停止侧聊')}</button> : <button className={`dsh-sc-send-button${surface ? ' dsh-sc-action-icon' : ''}`} aria-label="发送到侧聊" title={sending && sending === sideId ? '发送中' : '发送（Ctrl / ⌘ Enter）'} onClick={sendSidechat} disabled={!sideId || !draft.trim() || Boolean(sending)}><Icon name={surface ? 'up' : 'send'} size={surface ? 17 : 15}/>{!surface && (sending && sending === sideId ? '发送中' : '发送')}</button>}</div></div>
+          {surface === 'chat' ? <ComposerBar api={api} sessionId={sideId} mainSessionId={mainSessionId} onPacket={addPacket}>{inputElement}{submitElement}</ComposerBar> : <div className="dsh-sc-composer">{inputElement}<div className="dsh-sc-composer-actions"><span>Ctrl / ⌘ Enter 发送</span>{submitElement}</div></div>}
           {!surface && <p className="dsh-sc-compose-note"><span className="dsh-sc-status-dot"/>侧聊独立运行 · 仅在你确认后送回主任务</p>}
         </div>
       </section>

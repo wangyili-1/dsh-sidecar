@@ -98,8 +98,13 @@ test('drop geometry distinguishes tab insertion from lower split and rejects out
 
 test('two web tabs retain stable surface parents and keys through split, close and restore', async () => {
   const h = harness(); await h.flush();
-  await menu(h); h.find(text('新建网页')).props.onClick(); await h.flush();
-  await menu(h); h.find(text('新建网页')).props.onClick(); await h.flush();
+  assert.equal(surfaceOf(h, 'files').length, 0, 'opening the workspace should start with a blank web page');
+  assert.equal(surfaceOf(h, 'browser')[0].key, 'web-start');
+  assert(h.find(label('关闭标签 新标签页')));
+  await menu(h);
+  assert.equal(h.nodes(text('文件')).length, 0);
+  assert.equal(h.nodes(text('终端')).length, 0);
+  h.find(text('新建网页')).props.onClick(); await h.flush();
   const before = surfaceOf(h, 'browser');
   assert.equal(before.length, 2);
   assert.notEqual(before[0].key, before[1].key);
@@ -122,7 +127,7 @@ test('two web tabs retain stable surface parents and keys through split, close a
 test('pointer capture drag commits a real split without remounting the source surface', async () => {
   const h = harness(); await h.flush();
   await menu(h); h.find(text('新建网页')).props.onClick(); await h.flush();
-  const web = surfaceOf(h, 'browser')[0];
+  const web = surfaceOf(h, 'browser').at(-1);
   const tab = h.find(node => node.props?.['data-ws-tab-id'] === web.key);
   const bounds = { left: 100, right: 520, top: 0, bottom: 900, height: 900 };
   h.find(node => node.props?.className === 'dsh-ws-grid').props.ref.current = { getBoundingClientRect: () => bounds, querySelectorAll: () => [] };
@@ -169,7 +174,7 @@ test('explicit context-carrying creation retains the requested backend flag', as
 });
 
 test('tool citations route to one owned chat with unique packet ids and failure remains rejectable', async () => {
-  const h = harness({ sidechats: [{ id: 'existing', title: 'Existing' }] }); await h.flush();
+  const h = harness({ intent: { sequence: 1, tool: 'files' }, sidechats: [{ id: 'existing', title: 'Existing' }] }); await h.flush();
   const files = surfaceOf(h, 'files')[0].props.children;
   await files.props.onPacket({ kind: 'file', source: 'one.py', text: 'one' }); await h.flush();
   await files.props.onPacket({ kind: 'web', source: 'https://example.invalid/', text: 'two' }); await h.flush();
@@ -179,7 +184,7 @@ test('tool citations route to one owned chat with unique packet ids and failure 
   assert.notEqual(chat.props.packets[0]._id, chat.props.packets[1]._id);
   assert(!h.calls.some(call => call.endpoint === 'sidechat/create'));
   h.unmount();
-  const failed = harness({ create: () => { throw new Error('fixture failure'); } }); await failed.flush();
+  const failed = harness({ intent: { sequence: 1, tool: 'files' }, create: () => { throw new Error('fixture failure'); } }); await failed.flush();
   await assert.rejects(surfaceOf(failed, 'files')[0].props.children.props.onPacket({ kind: 'file', source: 'keep.py', text: 'keep' }), /引用内容仍保留/);
   failed.unmount();
 });

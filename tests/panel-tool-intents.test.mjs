@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 const compiled = await build({
   entryPoints: [fileURLToPath(new URL('../src/Panel.jsx', import.meta.url))],
   bundle: true, write: false, platform: 'browser', format: 'cjs', jsx: 'automatic',
-  external: ['react', 'react/jsx-runtime'], loader: { '.css': 'empty' },
+  external: ['react', 'react/jsx-runtime', 'react-dom'], loader: { '.css': 'empty' },
 });
 
 // Exercise the real component's closures with deterministic hook commits and
@@ -50,7 +50,7 @@ function harness({ intent, strict = false, sidechats = [], create, surfaceProps 
     module, exports: module.exports, queueMicrotask, URL,
     setInterval: callback => { const id = ++nextInterval; intervals.set(id, callback); return id; },
     clearInterval: id => intervals.delete(id), setTimeout: () => 1, clearTimeout() {},
-    require: (specifier) => specifier === 'react' ? react : { jsx, jsxs: jsx },
+    require: (specifier) => specifier === 'react' ? react : specifier === 'react-dom' ? { createPortal: value => value } : { jsx, jsxs: jsx },
   });
   const api = { async call(endpoint, payload) {
     calls.push({ endpoint, payload });

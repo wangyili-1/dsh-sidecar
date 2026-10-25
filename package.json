@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidecar",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Independent side conversations and a file, command and browser workbench for DeepSeek Harness.",
   "type": "module",
   "license": "MIT",
@@ -42,6 +42,7 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-ui-model-selection",
         "@deepseek-ai/dsh-api-workspace-controller",
         "@deepseek-ai/dsh-client-ui-workspace"
       ]

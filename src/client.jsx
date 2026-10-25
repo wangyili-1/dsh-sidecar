@@ -1,12 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Panel from './WorkspacePanel.jsx';
 import { attachDockLayout } from './dock-layout.mjs';
+import { createRuntimeControls } from './runtime-controls.mjs';
 import './toolbar.css';
 
-export const inject = ['slots', 'layout', 'connection', 'sessions', 'workspaces', 'uiWorkspace'];
+export const inject = ['slots', 'layout', 'connection', 'sessions', 'workspaces', 'uiWorkspace', 'modelDirectories', 'remote', 'remote.session'];
 const TOOLS = [
-  { id: 'files', label: '文件' },
-  { id: 'terminal', label: '终端' },
   { id: 'browser', label: '网页' },
   { id: 'chat', label: '侧聊' },
 ];
@@ -48,8 +47,6 @@ function Toolbar({ state, onToggle, onTool }) {
       if (event.key === 'ArrowDown') { event.preventDefault(); setMenu(true); queueMicrotask(() => focusItem(0)); }
     }}><ToolbarIcon name="more"/></button>
     <button className="dsh-sc-toolbar-button" type="button" aria-label={state.visible ? '关闭 Sidecar 侧栏' : '打开 Sidecar 侧栏'} title={state.visible ? '关闭侧栏' : '打开侧栏'} aria-pressed={state.visible} onClick={() => { setMenu(false); void onToggle(); }}><ToolbarIcon name="controls"/></button>
-    {!state.visible && <span className="dsh-sc-toolbar-separator" aria-hidden="true"/>}
-    {!state.visible && <button className="dsh-sc-toolbar-button" type="button" aria-label="新建 Sidecar 侧聊" title="新建侧聊" disabled={state.busy} onClick={() => choose('chat', 'new-sidechat')}><ToolbarIcon name="new"/></button>}
     {menu && <div className="dsh-sc-toolbar-menu" role="menu" aria-label="Sidecar 功能" onKeyDown={event => {
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
       event.preventDefault();
@@ -121,6 +118,7 @@ export function apply(ctx) {
     for (const listener of listeners) listener();
   };
   const api = Object.freeze({
+    runtime: createRuntimeControls(ctx),
     async call(endpoint, payload = {}, signal) {
       const result = await ctx.connection.rpc.call('/sidecar-api', endpoint, payload, signal);
       if (!result.ok) {
@@ -164,7 +162,7 @@ export function apply(ctx) {
     } else if (blank !== state.blank) { publish({ blank }); syncDetails(); }
   };
   const unsubscribeSessions = ctx.sessions.list.subscribe(syncSelection);
-  const onTool = async (tool = 'files', action) => {
+  const onTool = async (tool = 'browser', action) => {
     if (disposed || state.busy) return;
     const ticket = ++request;
     publish({ visible: true, opened: true, error: '', busy: true });
@@ -194,7 +192,7 @@ export function apply(ctx) {
       if (!disposed && ticket === request) publish({ error: error?.message || '无法打开 Sidecar，请重试。' });
     } finally { if (!disposed && ticket === request && state.busy) publish({ busy: false }); }
   };
-  const onToggle = () => state.visible ? close() : onTool('files');
+  const onToggle = () => state.visible ? close() : onTool('browser');
   const injectToolbar = () => ({ onToggle, onTool, hooks: { sidecarState: source } });
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'dsh-sidecar-overlay', order: 100,

@@ -6,6 +6,16 @@ import './workspace.css';
 const POLL_MS = 1500;
 const LABELS = { files: '文件', terminal: '终端', browser: '网页', chat: '侧聊' };
 
+function createInitialWorkspace() {
+  const initial = createWorkspaceState();
+  return {
+    ...initial,
+    tabs: [{ id: 'web-start', kind: 'browser', title: '新标签页' }],
+    groups: { ...initial.groups, top: ['web-start'] },
+    active: { ...initial.active, top: 'web-start' },
+  };
+}
+
 function Icon({ kind, size = 15 }) {
   const paths = {
     files: <><path d="M3 6h6l2 2h10v12H3z"/><path d="M3 6V4h6l2 2h8v2"/></>,
@@ -40,7 +50,7 @@ export default function WorkspacePanel(props) {
 }
 
 function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
-  const [workspace, dispatch] = useReducer(workspaceTabsReducer, undefined, createWorkspaceState);
+  const [workspace, dispatch] = useReducer(workspaceTabsReducer, undefined, createInitialWorkspace);
   const current = useRef(workspace);
   current.current = workspace;
   const transport = useRef(api);
@@ -287,8 +297,6 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
         <button type="button" role="menuitem" onClick={() => openTool('browser', group, true)}><Icon kind="browser"/>新建网页</button>
         <button type="button" role="menuitem" disabled={creating} onClick={() => { setMenu(null); void newChat(group); }}><Icon kind="chat"/>{creating ? '创建中…' : '新建侧聊'}</button>
         <button type="button" role="menuitem" aria-label="新建侧聊（带主任务上下文）" disabled={creating} onClick={() => { setMenu(null); void newChat(group, true); }}><Icon kind="chat"/>新建上下文侧聊</button>
-        <button type="button" role="menuitem" onClick={() => openTool('files', group)}><Icon kind="files"/>文件</button>
-        <button type="button" role="menuitem" onClick={() => openTool('terminal', group)}><Icon kind="terminal"/>终端</button>
         {(remote?.sidechats?.length > 0) && <><div className="dsh-ws-menu-label">继续侧聊</div>{remote.sidechats.map(side => <button key={side.id} type="button" role="menuitem" onClick={() => openChat(side, group)}><Icon kind="chat"/><span>{side.title || '侧聊'}</span></button>)}</>}
         {workspace.tabs.some(tab => !groupForTab(workspace, tab.id)) && <><div className="dsh-ws-menu-label">已关闭</div>{workspace.tabs.filter(tab => !groupForTab(workspace, tab.id)).slice(-5).reverse().map(tab => <button key={tab.id} type="button" role="menuitem" aria-label={`恢复标签 ${tab.title}`} onClick={() => open(tab, group)}><Icon kind={tab.kind}/><span>{tab.title}</span></button>)}</>}
         <div className="dsh-ws-menu-label">布局</div>
