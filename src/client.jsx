@@ -8,6 +8,7 @@ export const inject = ['slots', 'layout', 'connection', 'sessions', 'workspaces'
 const TOOLS = [
   { id: 'browser', label: '网页' },
   { id: 'chat', label: '侧聊' },
+  { id: 'team', label: '协作' },
 ];
 function ToolbarIcon({ name }) {
   const paths = {
@@ -18,6 +19,7 @@ function ToolbarIcon({ name }) {
     terminal: <path d="m5 6 5 5-5 5M13 17h6"/>,
     browser: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></>,
     chat: <path d="M4 4h16v12H9l-5 4z"/>,
+    team: <><circle cx="9" cy="7" r="3"/><path d="M3 20v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2"/></>,
   };
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }

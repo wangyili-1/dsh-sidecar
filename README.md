@@ -2,6 +2,8 @@
 
 **简体中文** · [English](README.en.md)
 
+> 开发分支新增 **DSH 主控的多模型协作**：GLM / Qwen、OpenAI 文本与生图、Claude 和兼容中转接口。接入范围、配置方法与 WorkBuddy 路线见[协作说明](docs/MULTI_AGENT.md)。此部分尚未用真实供应商账号验收，不属于已发布的 v0.4.1。
+
 [![Tests](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml/badge.svg)](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 

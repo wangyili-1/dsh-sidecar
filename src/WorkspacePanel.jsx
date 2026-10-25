@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import Surface from './Panel.jsx';
+import TeamPanel from './TeamPanel.jsx';
 import { createWorkspaceState, workspaceTabsReducer, groupForTab, openTabIds } from './workspace-tabs.mjs';
 import './workspace.css';
 
 const POLL_MS = 1500;
-const LABELS = { files: '文件', terminal: '终端', browser: '网页', chat: '侧聊' };
+const LABELS = { files: '文件', terminal: '终端', browser: '网页', chat: '侧聊', team: '协作' };
 
 function createInitialWorkspace() {
   const initial = createWorkspaceState();
@@ -22,6 +23,7 @@ function Icon({ kind, size = 15 }) {
     terminal: <path d="m5 6 5 5-5 5M13 17h6"/>,
     browser: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></>,
     chat: <path d="M4 4h16v12H9l-5 4z"/>,
+    team: <><circle cx="9" cy="7" r="3"/><path d="M3 20v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2"/></>,
     plus: <path d="M12 5v14M5 12h14"/>,
     close: <path d="m6 6 12 12M18 6 6 18"/>,
     split: <><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18"/></>,
@@ -201,7 +203,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
     return task;
   }, [mainSessionId, openChat]);
   const openTool = useCallback((kind, group, forceNew = false) => {
-    if (kind === 'files' || kind === 'terminal') return open({ id: kind, kind, title: LABELS[kind] }, group);
+    if (kind === 'files' || kind === 'terminal' || kind === 'team') return open({ id: kind, kind, title: LABELS[kind] }, group);
     const snapshot = current.current;
     if (!forceNew) {
       const focused = snapshot.tabs.find(tab => tab.id === snapshot.active[snapshot.focused] && tab.kind === kind);
@@ -230,7 +232,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
       handledIntent.current = toolIntent.sequence;
       if (toolIntent.action === 'new-sidechat') void newChat(current.current.focused);
       else if (toolIntent.tool === 'chat') continueChat();
-      else if (['files', 'terminal', 'browser'].includes(toolIntent.tool)) openTool(toolIntent.tool);
+      else if (['files', 'terminal', 'browser', 'team'].includes(toolIntent.tool)) openTool(toolIntent.tool);
     });
     return () => { disposed = true; };
   }, [toolIntent?.sequence, toolIntent?.tool, toolIntent?.action, remote, newChat, continueChat, openTool]);
@@ -331,6 +333,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
       {group === 'top' && <button type="button" className="dsh-ws-icon-button" aria-label={split ? '合并上下分屏' : '上下分屏'} title={split ? '合并为一个标签组' : '将当前标签移到下方'} disabled={!split && openTabIds(workspace).length < 2} onClick={() => split ? dispatch({ type: 'merge' }) : splitActive(group)}><Icon kind={split ? 'merge' : 'split'}/></button>}
       {menu === group && <div className="dsh-ws-menu" role="menu" aria-label="添加标签">
         <button type="button" role="menuitem" onClick={() => openTool('browser', group, true)}><Icon kind="browser"/>新建网页</button>
+        <button type="button" role="menuitem" onClick={() => openTool('team', group)}><Icon kind="team"/>协作任务</button>
         <button type="button" role="menuitem" disabled={creating} onClick={() => { setMenu(null); void newChat(group); }}><Icon kind="chat"/>{creating ? '创建中…' : '新建侧聊'}</button>
         <button type="button" role="menuitem" aria-label="新建侧聊（带主任务上下文）" disabled={creating} onClick={() => { setMenu(null); void newChat(group, true); }}><Icon kind="chat"/>新建上下文侧聊</button>
         {(remote?.sidechats?.length > 0) && <><div className="dsh-ws-menu-label">继续侧聊</div>{remote.sidechats.map(side => <div key={side.id} className="dsh-ws-chat-row" data-sidechat-id={side.id} role="none"><button type="button" role="menuitem" disabled={closing.includes(side.id)} title={side.title || '新对话'} onClick={() => openChat(side, group)}><Icon kind="chat"/><span>{side.title || '新对话'}</span></button><button type="button" role="menuitem" className="dsh-ws-chat-remove" disabled={closing.includes(side.id)} aria-label={`永久关闭 ${side.title || '新对话'}`} title="永久关闭此侧聊（保留聊天记录）" onClick={() => void closeChat(side)}><Icon kind="close" size={13}/></button></div>)}</>}
@@ -354,7 +357,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
         const group = groupForTab(workspace, tab.id);
         const active = Boolean(group && workspace.active[group] === tab.id);
         return <div key={tab.id} id={`${prefix}-surface-${tab.id}`} className="dsh-ws-surface" role="tabpanel" aria-labelledby={`${prefix}-tab-${tab.id}`} hidden={!active} data-ws-pane-content={group || 'closed'} style={{ gridRow: group === 'bottom' ? 5 : 2, gridColumn: 1 }} onFocusCapture={() => { if (active) dispatch({ type: 'activate', id: tab.id }); }}>
-          <Surface api={api} mainSessionId={mainSessionId} surface={tab.kind} fixedSidechat={tab.kind === 'chat' ? { id: tab.sessionId, title: tab.title } : undefined} onPacket={tab.kind === 'chat' ? undefined : sendPacket} packets={tab.kind === 'chat' ? packetLists[tab.id] || [] : undefined} onPacketsChange={tab.kind === 'chat' ? updater => updatePackets(tab.id, updater) : undefined} createPacketId={createPacketId} onTitle={title => titleChanged(tab.id, title)}/>
+          {tab.kind === 'team' ? <TeamPanel api={api} mainSessionId={mainSessionId}/> : <Surface api={api} mainSessionId={mainSessionId} surface={tab.kind} fixedSidechat={tab.kind === 'chat' ? { id: tab.sessionId, title: tab.title } : undefined} onPacket={tab.kind === 'chat' ? undefined : sendPacket} packets={tab.kind === 'chat' ? packetLists[tab.id] || [] : undefined} onPacketsChange={tab.kind === 'chat' ? updater => updatePackets(tab.id, updater) : undefined} createPacketId={createPacketId} onTitle={title => titleChanged(tab.id, title)}/>}
         </div>;
       })}
       {!workspace.groups.top.length && <div className="dsh-ws-empty" style={{ gridRow: 2, gridColumn: 1 }}><button type="button" className="dsh-sc-small-button" onClick={() => setMenu('top')}><Icon kind="plus"/>添加标签</button></div>}

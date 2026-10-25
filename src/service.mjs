@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { applyEvent, completedContext, expandRecord, publicMessages, resetProjection } from './backend-events.mjs';
 import { createTerminalManager, failure, listFiles, readFile } from './backend-workspace.mjs';
 import { CONTEXT_HEADER, NEW_SIDECHAT_TITLE, PACKET_HEADER, SIDE_INSTRUCTION, needsTitleRecovery, promptTitle } from './sidechat-titles.mjs';
+import { createTeamService } from './team-service.mjs';
 
 const VERSION = '0.1.0';
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -218,6 +219,12 @@ export function createSidecarService(ctx, { dataDir, defaultCwd } = {}) {
     // Header is authoritative. The configured cwd is only the official header-absent fallback.
     return fs.realpath(typeof main.header.cwd === 'string' && main.header.cwd ? main.header.cwd : defaultCwd);
   }
+  const team = createTeamService({ dataDir, resolveWorkspace: async (mainId, signal) => {
+    await init;
+    const main = await mainFor(mainId, signal);
+    if (main.header.origin === 'subagent') throw failure('wrong-main', '请从主会话分派协作任务。');
+    return workspace(main);
+  } });
   function serialSend(sessionId, fn) {
     const prior = sendLocks.get(sessionId) ?? Promise.resolve();
     const next = prior.catch(() => {}).then(fn);
@@ -257,11 +264,13 @@ export function createSidecarService(ctx, { dataDir, defaultCwd } = {}) {
   }
 
   return {
+    team,
     async dispatch(endpoint, payload = {}, signal) {
       if (disposed) throw failure('disposed', 'Sidecar is closed.');
       await init;
       checkAbort(signal);
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw failure('invalid-argument', 'Payload must be an object.');
+      if (typeof endpoint === 'string' && endpoint.replace(/^\//, '').startsWith('team/')) return team.dispatch(endpoint, payload, signal);
       const known = new Set(['state', 'sidechat/create', 'sidechat/close', 'conversation/get', 'conversation/send', 'conversation/cancel', 'main/send', 'files/list', 'files/read', 'terminal/run', 'terminal/get', 'terminal/cancel']);
       if (!known.has(endpoint)) throw failure('unknown-endpoint', 'Unknown sidecar endpoint.');
       const main = await mainFor(payload.mainSessionId, signal);
@@ -365,6 +374,7 @@ export function createSidecarService(ctx, { dataDir, defaultCwd } = {}) {
       disposed = true;
       for (const cache of caches.values()) cache.abort.abort();
       await terminal.dispose();
+      await team.dispose();
       await writeQueue.catch(() => {});
     },
   };

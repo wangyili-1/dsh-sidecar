@@ -98,6 +98,20 @@ test('drop geometry distinguishes tab insertion from lower split and rejects out
   h.unmount();
 });
 
+test('team intent opens one collaboration tab and preserves it through split and restore', async () => {
+  const h = harness({ intent: { sequence: 1, tool: 'team' } }); await h.flush();
+  const team = h.find(node => node.props?.className === 'dsh-ws-surface' && node.key === 'team');
+  assert.equal(team.props.children.props.mainSessionId, 'main-fixture');
+  assert(!h.calls.some(call => call.endpoint === 'sidechat/create'));
+  h.find(label('上下分屏')).props.onClick(); await h.flush();
+  assert.equal(h.find(node => node.key === 'team' && node.props?.className === 'dsh-ws-surface').props['data-ws-pane-content'], 'bottom');
+  h.find(label('关闭标签 协作')).props.onClick(); await h.flush();
+  h.render({ sequence: 2, tool: 'team' }); await h.flush();
+  const restored = h.find(node => node.props?.className === 'dsh-ws-surface' && node.key === 'team');
+  assert.equal(restored.props.hidden, false); assert.equal(restored.props.children.type, team.props.children.type);
+  h.unmount();
+});
+
 test('two web tabs retain stable surface parents and keys through split, close and restore', async () => {
   const h = harness(); await h.flush();
   assert.equal(surfaceOf(h, 'files').length, 0, 'opening the workspace should start with a blank web page');

@@ -1,5 +1,5 @@
 const GROUPS = ['top', 'bottom'];
-const KINDS = new Set(['files', 'terminal', 'browser', 'chat']);
+const KINDS = new Set(['files', 'terminal', 'browser', 'chat', 'team']);
 const isGroup = value => GROUPS.includes(value);
 const isId = value => typeof value === 'string' && value.trim().length > 0;
 const equalList = (left, right) => left.length === right.length && left.every((value, index) => value === right[index]);

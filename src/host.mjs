@@ -1,9 +1,10 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSidecarService } from './service.mjs';
+import { registerAgentTools } from './agent-tools.mjs';
 
 export const name = 'dsh-sidecar';
-export const inject = ['connection', 'sessionController', 'workspaceController'];
+export const inject = ['connection', 'sessionController', 'workspaceController', 'tools'];
 
 /** Use the installed DSH connection so every request retains its browser trust and authentication checks. */
 export function apply(ctx, config = {}) {
@@ -14,6 +15,7 @@ export function apply(ctx, config = {}) {
   });
 
   ctx.effect(() => () => service.dispose(), 'dsh-sidecar: service cleanup');
+  registerAgentTools(ctx, service.team);
   ctx.connection.rpc.handle('/sidecar-api', async (endpoint, payload, signal) => {
     try {
       const value = await service.dispatch(endpoint, payload, signal);

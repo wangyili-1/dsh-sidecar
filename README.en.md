@@ -1,5 +1,7 @@
 # DSH Sidecar
 
+> This development branch adds DSH-led multi-model task coordination: GLM / Qwen, OpenAI text and images, Claude, and compatible gateways. See the [integration guide](docs/MULTI_AGENT.md) for configuration, boundaries, and the WorkBuddy roadmap. Real provider accounts have not been tested; this feature is not included in the published v0.4.1 release.
+
 [![Tests](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml/badge.svg)](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
