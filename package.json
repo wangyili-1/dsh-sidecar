@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidecar",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Independent side conversations and a file, command and browser workbench for DeepSeek Harness.",
   "type": "module",
   "license": "MIT",

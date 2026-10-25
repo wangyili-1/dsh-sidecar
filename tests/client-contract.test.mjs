@@ -23,7 +23,7 @@ function harness({ current = 'main', blank = false, noCurrent = false, items, co
     module, exports: module.exports, queueMicrotask,
     require: specifier => {
       assert(['react', 'react/jsx-runtime'].includes(specifier));
-      return { jsx, jsxs: jsx };
+      return { jsx, jsxs: jsx, useRef: value => ({ current: value }), useLayoutEffect() {} };
     },
   });
   let sessions = { phase: 'ready', current: noCurrent ? undefined : current, byId: { main: { id: 'main', blank, updatedAt: 10 } } };
@@ -103,8 +103,6 @@ test('nonblank native column is reversible and returns the original details cont
   assert.equal(h.renderHeader(), null, 'open panel has only one global toolbar');
   assert.notEqual(h.activeDetails(), h.originalDetails);
   assert(h.entries.has(h.originalDetails));
-  h.activeDetails().options.inject().onWidth(512);
-  assert.equal(h.state().width, 512);
   h.face.onClose();
   assert.equal(h.activeDetails(), h.originalDetails);
   assert.equal(h.state().visible, false);

@@ -1,5 +1,5 @@
 /* Compact, additive controls using DSH's native black/gray theme aliases. */
-.dsh-sc-shell-overlay { position: absolute; inset: 0; pointer-events: none !important; }
+.dsh-sc-shell-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none !important; }
 .dsh-sc-floating-toolbar { position: absolute; top: 10px; right: 14px; z-index: 3; pointer-events: auto; }
 .dsh-sc-toolbar { position: relative; z-index: 10; display: inline-flex; align-items: center; gap: 3px; height: 32px; color: var(--dsw-alias-label-tertiary, #adb2b8); font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif); }
 .dsh-sc-toolbar .dsh-sc-toolbar-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
@@ -11,9 +11,29 @@
 .dsh-sc-toolbar-menu > button { display: flex; align-items: center; gap: 11px; width: 100%; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary, #cfd3d6); text-align: left; padding: 10px; cursor: pointer; font: inherit; font-size: 12px; }
 .dsh-sc-toolbar-menu > button > svg { flex-shrink: 0; }
 .dsh-sc-toolbar-menu small { display: block; margin-top: 3px; color: var(--dsw-alias-label-caption, #81858c); font-size: 10px; line-height: 1.4; }
-.dsh-sc-global-panel { position: absolute; inset: 0 0 0 auto; display: flex; flex-direction: column; max-width: 100%; height: 100%; pointer-events: auto; background: var(--dsw-alias-bg-base, #151517); box-shadow: -8px 0 24px #0002; }
-.dsh-sc-global-panel[hidden] { display: none !important; }
-.dsh-sc-global-panel > .dsh-sidecar { flex: 1; height: auto; min-height: 0; }
+/* Use the same easing as DSH's grid tracks so its native details reservation
+   and our additional space move as one, including on an empty home screen. */
+[data-dsh-sc-center] {
+  box-sizing: border-box;
+  padding-right: var(--dsh-sc-reserved-width, 0px);
+  transition: padding-right var(--ds-transition-duration-slow, 260ms) var(--ds-ease-in-out, cubic-bezier(.4, 0, .2, 1));
+}
+[data-dsh-sc-docked] > [data-side='details'] { visibility: hidden; pointer-events: none; }
+.dsh-sc-global-panel {
+  position: absolute; inset: 0 0 0 auto; display: flex; flex-direction: column;
+  width: var(--dsh-sc-panel-width, 420px); max-width: 100%; height: 100%;
+  pointer-events: none; visibility: hidden; transform: translateX(calc(100% + 16px));
+  background: var(--dsw-alias-bg-base, #151517); box-shadow: -8px 0 24px #0002;
+  transition: transform var(--ds-transition-duration-slow, 260ms) var(--ds-ease-in-out, cubic-bezier(.4, 0, .2, 1)),
+    width var(--ds-transition-duration-slow, 260ms) var(--ds-ease-in-out, cubic-bezier(.4, 0, .2, 1)),
+    visibility 0s linear var(--ds-transition-duration-slow, 260ms);
+}
+.dsh-sc-global-panel[data-open='true'] { pointer-events: auto; visibility: visible; transform: translateX(0); transition-delay: 0s; }
+.dsh-sc-global-panel > .dsh-sidecar { flex: 1; height: auto; min-height: 0; min-width: 0; }
+[data-dragging] > [data-dsh-sc-center], [data-dragging] .dsh-sc-global-panel { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  [data-dsh-sc-center], .dsh-sc-global-panel { transition: none; }
+}
 .dsh-sc-global-panel .dsh-sc-heading { min-height: 52px; padding-right: 142px; }
 .dsh-sc-global-panel .dsh-sc-brand small { display: none; }
 .dsh-sc-details-spacer { width: 100%; height: 100%; pointer-events: none; }

@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Panel from './Panel.jsx';
+import { attachDockLayout } from './dock-layout.mjs';
 import './toolbar.css';
 
 export const inject = ['slots', 'layout', 'connection', 'sessions', 'workspaces', 'uiWorkspace'];
@@ -64,27 +65,25 @@ function HeaderToolbar({ useSidecarState, onToggle, onTool }) {
 }
 function Overlay({ api, useSidecarState, onToggle, onTool, onClose }) {
   const state = useSidecarState(value => value);
-  return <div className="dsh-sc-shell-overlay">
+  const root = useRef(null);
+  const dock = useRef(null);
+  useLayoutEffect(() => {
+    const binding = attachDockLayout(root.current);
+    dock.current = binding;
+    binding.update({ visible: state.visible });
+    return () => { binding.dispose(); dock.current = null; };
+  }, []);
+  useLayoutEffect(() => { dock.current?.update({ visible: state.visible }); }, [state.visible]);
+  return <div ref={root} className="dsh-sc-shell-overlay">
     {(state.visible || state.blank) && <div className="dsh-sc-floating-toolbar"><Toolbar state={state} onToggle={onToggle} onTool={onTool}/></div>}
-    {state.opened && <div className="dsh-sc-global-panel" hidden={!state.visible} style={{ width: state.width }}>
+    <div className="dsh-sc-global-panel" data-open={state.visible ? 'true' : 'false'} aria-hidden={!state.visible} inert={state.visible ? undefined : ''}>
       {state.error && <div className="dsh-sc-launcher-notice" role="status">{state.error}</div>}
-      {state.mainSessionId ? <Panel api={api} mainSessionId={state.mainSessionId} toolIntent={state.toolIntent}/> : <aside className="dsh-sc-launcher-empty" aria-label="Sidecar 右栏"><header>Sidecar</header><strong>{state.busy ? '正在连接工作区…' : '先选择工作区'}</strong><p>{state.busy ? '会创建或复用一个空白主会话，无需发送消息。' : '在左侧添加或选择项目工作区，然后从右上角打开需要的功能。'}</p><button type="button" onClick={onClose}>关闭侧栏</button></aside>}
-    </div>}
+      {state.opened && (state.mainSessionId ? <Panel api={api} mainSessionId={state.mainSessionId} toolIntent={state.toolIntent}/> : <aside className="dsh-sc-launcher-empty" aria-label="Sidecar 右栏"><header>Sidecar</header><strong>{state.busy ? '正在连接工作区…' : '先选择工作区'}</strong><p>{state.busy ? '会创建或复用一个空白主会话，无需发送消息。' : '在左侧添加或选择项目工作区，然后从右上角打开需要的功能。'}</p><button type="button" onClick={onClose}>关闭侧栏</button></aside>)}
+    </div>
   </div>;
 }
-/** Only this plugin-owned element is measured; no private DSH DOM selectors. */
-function DetailsSpacer({ onWidth }) {
-  const ref = useRef(null);
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return undefined;
-    const update = () => onWidth(element.getBoundingClientRect().width);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [onWidth]);
-  return <div ref={ref} className="dsh-sc-details-spacer" aria-hidden="true"/>;
+function DetailsSpacer() {
+  return <div className="dsh-sc-details-spacer" aria-hidden="true"/>;
 }
 /** Match DSH's public navigation policy without choosing a filesystem path. */
 export function recentWorkspace(items, sessions) {
@@ -110,7 +109,7 @@ export function apply(ctx) {
   let state = {
     mainSessionId: initial.current,
     blank: initial.current === undefined || initial.byId[initial.current]?.blank !== false,
-    visible: false, opened: false, busy: false, error: '', toolIntent: undefined, width: 420,
+    visible: false, opened: false, busy: false, error: '', toolIntent: undefined,
   };
   const source = {
     getSnapshot: () => state,
@@ -132,14 +131,11 @@ export function apply(ctx) {
       return result.value;
     },
   });
-  const onWidth = width => {
-    if (state.visible && !state.blank && width >= 280 && Math.abs(state.width - width) > .5) publish({ width });
-  };
   const syncDetails = () => {
     const needsColumn = state.visible && !state.blank;
     if (needsColumn && releaseDetails === undefined) {
       releaseDetails = ctx.slots.inject('details', () => ctx.slots.register({
-        name: 'details', priority: -100, inject: () => ({ onWidth }),
+        name: 'details', priority: -100,
       }, DetailsSpacer));
       ctx.layout.openDetails();
     } else if (!needsColumn && releaseDetails !== undefined) {
@@ -161,11 +157,11 @@ export function apply(ctx) {
     if (current !== state.mainSessionId) {
       const ownSelection = pendingSelection === current && current !== undefined;
       if (!ownSelection) request++;
-      publish({ mainSessionId: current, blank, toolIntent: undefined, error: '', width: 420,
+      publish({ mainSessionId: current, blank, toolIntent: undefined, error: '',
         ...(!ownSelection ? { visible: false, busy: false } : {}),
       });
       syncDetails();
-    } else if (blank !== state.blank) { publish({ blank, width: 420 }); syncDetails(); }
+    } else if (blank !== state.blank) { publish({ blank }); syncDetails(); }
   };
   const unsubscribeSessions = ctx.sessions.list.subscribe(syncSelection);
   const onTool = async (tool = 'files', action) => {

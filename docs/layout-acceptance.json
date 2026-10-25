@@ -1,0 +1,18 @@
+{
+  "version": "0.2.1",
+  "date": "2026-10-25",
+  "timezone": "Asia/Shanghai",
+  "runtime": "DSH 0.1.2-rc.1, local desktop runtime on port 3080",
+  "method": "Browser UI actions followed by read-only DOM bounding rectangles and computed styles; no model calls",
+  "units": "CSS pixels",
+  "home_before": { "viewport": [1440, 1000], "input_right": 1239.1979675292969, "panel_left": 1020, "overlap": 219.19796752929688 },
+  "home_after": { "viewport": [1440, 1000], "input_right": 992, "panel_left": 1020, "padding_right": 420, "overlap": 0 },
+  "home_closing_sample": { "input_right": 995.6771240234376, "padding_right": 416.33, "translate_x": 3.81012, "inert": true, "visibility": "visible" },
+  "home_closed": { "input_right": 1239.1979675292969, "padding_right": 0, "translate_x": 436, "visibility": "hidden" },
+  "home_opening_sample": { "padding_right": 1.5597, "translate_x": 434.381, "panel_left": 1454.380859375 },
+  "transition": { "seconds": 0.3, "easing": "cubic-bezier(.4, 0, .2, 1)" },
+  "conversation_wide": { "viewport": [1440, 1000], "native_details": 360, "extra_reservation": 60, "input_left": 296, "input_right": 992, "panel_left": 1020, "overlap": 0 },
+  "conversation_narrow": { "viewport": [900, 800], "native_sidebar": 56, "native_details": 0, "input_width": 380, "input_right": 452, "panel_left": 480, "panel_width": 420, "overlap": 0 },
+  "checks": { "draft_preserved_on_close_reopen": true, "draft_cleared_after_test": true, "files_menu_route": true, "terminal_menu_route": true, "browser_menu_route": true, "real_report_read": true, "console_errors": 0 },
+  "screenshots": ["docked-home.jpg", "docked-conversation.jpg"]
+}
