@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { attachDockLayout, computeDockMetrics, parseNativeTracks } from '../src/dock-layout.mjs';
+import { attachDockLayout, computeDockMetrics, dockWidthRange, parseNativeTracks, readDockWidth, DOCK_WIDTH_KEY } from '../src/dock-layout.mjs';
 
 test('blank home reserves the full dock, while native conversation tracks supply their share', () => {
   assert.deepEqual(computeDockMetrics({ frameWidth: 1440, sidebarWidth: 280, visible: true }), { panelWidth: 420, reservedWidth: 420 });
@@ -30,8 +30,10 @@ test('native track parsing rejects unknown layout structures instead of guessing
   for (const value of ['1fr 1fr', '280px 1fr 360px', '280px minmax(100px,1fr) 360px', 'var(--sidebar) minmax(0,1fr) 360px', 'none']) assert.equal(parseNativeTracks(value), undefined);
 });
 
-function fixture({ frameWidth = 1440, sidebarWidth = 280, tracks = '280px minmax(0, 1fr) 0px', display = 'grid' } = {}) {
+function fixture({ frameWidth = 1440, sidebarWidth = 280, tracks = '280px minmax(0, 1fr) 0px', display = 'grid', storage } = {}) {
   const mutations = [], resizes = [];
+  const animationFrames = new Map();
+  let nextFrame = 1;
   function observer(list) {
     return class {
       constructor(callback) { this.callback = callback; this.targets = []; this.disconnected = false; list.push(this); }
@@ -40,7 +42,10 @@ function fixture({ frameWidth = 1440, sidebarWidth = 280, tracks = '280px minmax
       fire() { this.callback([]); }
     };
   }
-  const view = { getComputedStyle: () => ({ display }), MutationObserver: observer(mutations), ResizeObserver: observer(resizes) };
+  const view = { getComputedStyle: () => ({ display }), MutationObserver: observer(mutations), ResizeObserver: observer(resizes), localStorage: storage,
+    requestAnimationFrame(callback) { const id = nextFrame++; animationFrames.set(id, callback); return id; },
+    cancelAnimationFrame(id) { animationFrames.delete(id); },
+  };
   function element(width = 0) {
     const attributes = new Map();
     const properties = new Map();
@@ -66,7 +71,9 @@ function fixture({ frameWidth = 1440, sidebarWidth = 280, tracks = '280px minmax
   overlay.parentElement = shell;
   shell.contains = node => node === shell || node === overlay;
   overlay.closest = selector => selector === '[data-shell-overlay]' ? shell : null;
-  return { frame, sidebar, center, details, shell, overlay, mutations, resizes };
+  return { frame, sidebar, center, details, shell, overlay, mutations, resizes, view, animationFrames,
+    flushFrames() { const pending = [...animationFrames.values()]; animationFrames.clear(); for (const callback of pending) callback(); },
+  };
 }
 
 test('adapter follows native target tracks and resize without writing DSH tracks or observing itself', () => {
@@ -137,4 +144,120 @@ test('unknown or changed shell structure is not mutated and active reservations 
   assert.equal(f.center.style.getPropertyValue('--dsh-sc-reserved-width'), '');
   assert.equal(f.frame.getAttribute('data-dsh-sc-docked'), null);
   assert(f.mutations[0].disconnected && f.resizes[0].disconnected);
+});
+
+function memoryStorage(initial) {
+  const values = new Map(initial === undefined ? [] : [[DOCK_WIDTH_KEY, String(initial)]]);
+  const writes = [];
+  return { values, writes, getItem: key => values.get(key) ?? null, setItem(key, value) { writes.push([key, value]); values.set(key, value); } };
+}
+
+test('saved preferences survive a temporary narrow window and automatic clamps do not overwrite storage', () => {
+  const storage = memoryStorage(700);
+  const f = fixture({ frameWidth: 1000, storage });
+  const dock = attachDockLayout(f.overlay); dock.update({ visible: true });
+  assert.equal(dock.getSnapshot().panelWidth, 400);
+  assert.equal(dock.getSnapshot().preferredWidth, 700);
+  f.frame.width = 1600; f.resizes[0].fire();
+  assert.equal(dock.getSnapshot().panelWidth, 700);
+  assert.equal(f.center.style.getPropertyValue('--dsh-sc-reserved-width'), '700px');
+  assert.deepEqual(storage.writes, []);
+  assert.deepEqual(dockWidthRange({ frameWidth: 2200, sidebarWidth: 280 }), { minWidth: 320, maxWidth: 960 });
+  dock.dispose();
+});
+
+test('pointer resizing uses the rendered clamp, coalesces moves and commits only the final width', () => {
+  const storage = memoryStorage(700);
+  const f = fixture({ frameWidth: 1000, storage });
+  const dock = attachDockLayout(f.overlay); dock.update({ visible: true });
+  assert(dock.startResize(4, 600, 400));
+  assert.equal(f.frame.getAttribute('data-dsh-sc-resizing'), '');
+  assert.equal(dock.startResize(5, 600, 400), false);
+  dock.moveResize(5, 700);
+  assert.equal(f.animationFrames.size, 0, 'another touch must not resize this drag');
+  dock.moveResize(4, 620); dock.moveResize(4, 650);
+  assert.equal(f.animationFrames.size, 1);
+  assert.equal(dock.getSnapshot().panelWidth, 400, 'wait for one animation frame');
+  f.flushFrames();
+  assert.equal(dock.getSnapshot().panelWidth, 350, 'movement starts from visible 400px rather than saved 700px');
+  assert.equal(f.center.style.getPropertyValue('--dsh-sc-reserved-width'), '350px');
+  assert.deepEqual(storage.writes, []);
+  dock.moveResize(4, 660);
+  dock.endResize(4, 670);
+  assert.equal(dock.getSnapshot().panelWidth, 330, 'pointerup flushes its newest coordinate');
+  assert.equal(f.animationFrames.size, 0);
+  assert.equal(dock.getSnapshot().resizing, false);
+  assert.equal(f.frame.getAttribute('data-dsh-sc-resizing'), null);
+  assert.deepEqual(storage.writes, [[DOCK_WIDTH_KEY, '330']]);
+  dock.dispose();
+});
+
+test('cancel, close and dispose retract pending drags without saving or leaking callbacks', () => {
+  for (const ending of ['cancel', 'close', 'dispose']) {
+    const storage = memoryStorage(600);
+    const f = fixture({ storage });
+    const dock = attachDockLayout(f.overlay); dock.update({ visible: true });
+    let notices = 0; dock.subscribe(() => notices++);
+    dock.startResize(3, 900, 600); dock.moveResize(3, 850); f.flushFrames();
+    assert.equal(dock.getSnapshot().panelWidth, 650);
+    dock.moveResize(3, 800);
+    const pending = [...f.animationFrames.values()];
+    if (ending === 'cancel') dock.endResize(3, undefined, true);
+    if (ending === 'close') dock.update({ visible: false });
+    if (ending === 'dispose') dock.dispose();
+    assert.equal(f.animationFrames.size, 0);
+    assert.equal(f.frame.getAttribute('data-dsh-sc-resizing'), null);
+    assert.deepEqual(storage.writes, []);
+    const before = notices;
+    for (const callback of pending) callback();
+    assert.equal(notices, before, 'cancelled frame callbacks may not resume the drag');
+    if (ending !== 'dispose') assert.equal(dock.getSnapshot().preferredWidth, 600);
+    dock.dispose();
+  }
+});
+
+test('keyboard resizing follows the right-side boundary, applies runtime limits, and persists choices', () => {
+  const storage = memoryStorage(); const f = fixture({ storage });
+  const dock = attachDockLayout(f.overlay); dock.update({ visible: true });
+  assert(dock.resizeByKey('ArrowLeft')); assert.equal(dock.getSnapshot().panelWidth, 436);
+  assert(dock.resizeByKey('ArrowRight', true)); assert.equal(dock.getSnapshot().panelWidth, 388);
+  assert(dock.resizeByKey('Home')); assert.equal(dock.getSnapshot().panelWidth, 320);
+  assert(dock.resizeByKey('End')); assert.equal(dock.getSnapshot().panelWidth, 840);
+  assert.equal(storage.values.get(DOCK_WIDTH_KEY), '840');
+  assert.equal(dock.resizeByKey('ArrowUp'), false);
+  dock.startResize(1, 600, 840); dock.moveResize(1, 650); f.flushFrames();
+  assert(dock.resizeByKey('Escape')); assert.equal(dock.getSnapshot().panelWidth, 840);
+  dock.resetWidth(); assert.equal(dock.getSnapshot().panelWidth, 420);
+  assert.equal(storage.values.get(DOCK_WIDTH_KEY), '420');
+  dock.update({ visible: false }); assert.equal(dock.resizeByKey('ArrowLeft'), false);
+  dock.dispose();
+});
+
+test('native details limits avoid a blank gap, and focus clicks do not overwrite a clamped preference', () => {
+  const storage = memoryStorage(700); const f = fixture({ frameWidth: 1000, storage });
+  const dock = attachDockLayout(f.overlay); dock.update({ visible: true });
+  dock.startResize(1, 400, 400); dock.endResize(1, 400);
+  assert.equal(dock.getSnapshot().preferredWidth, 700);
+  assert.deepEqual(storage.writes, []);
+  f.frame.width = 1600; f.frame.style.gridTemplateColumns = '280px minmax(0px, 1fr) 520px'; f.mutations[0].fire();
+  assert(dock.resizeByKey('Home'));
+  assert.equal(dock.getSnapshot().panelWidth, 520);
+  assert.equal(f.center.style.getPropertyValue('--dsh-sc-reserved-width'), '0px');
+  dock.resetWidth(); assert.equal(dock.getSnapshot().panelWidth, 520);
+  assert.equal(storage.values.get(DOCK_WIDTH_KEY), '420', 'reset saves the default preference even when native details temporarily require more room');
+  dock.dispose();
+});
+
+test('invalid or blocked local storage falls back safely and cannot prevent resize operations', () => {
+  for (const value of [null, '', '0', '-1', 'NaN', 'Infinity', '{}', '1e9']) assert.equal(readDockWidth({ getItem: () => value }), 420);
+  assert.equal(readDockWidth({ getItem: () => '480' }), 480);
+  assert.equal(readDockWidth({ getItem: () => '99999' }), 960);
+  assert.equal(readDockWidth({ getItem() { throw new Error('blocked'); } }), 420);
+  const f = fixture({ storage: { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('full'); } } });
+  const dock = attachDockLayout(f.overlay); dock.update({ visible: true });
+  assert.doesNotThrow(() => dock.resizeByKey('ArrowLeft'));
+  assert.equal(dock.getSnapshot().panelWidth, 436);
+  dock.dispose();
+  const second = fixture(); Object.defineProperty(second.view, 'localStorage', { get() { throw new Error('denied'); } });
+  assert.doesNotThrow(() => attachDockLayout(second.overlay).dispose());
 });

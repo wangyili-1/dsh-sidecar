@@ -97,6 +97,21 @@ test('merge keeps group order and the focused lower conversation selected', () =
   assertInvariant(state);
 });
 
+test('forget retires open and cached tabs while preserving adjacent focus and other descriptors', () => {
+  let state = withTabs('a', 'b');
+  const keep = state.tabs.find(item => item.id === 'b');
+  state = reduce(state, { type: 'move', id: 'a', to: 'bottom' });
+  state = reduce(state, { type: 'forget', id: 'a' });
+  assert(!state.tabs.some(item => item.id === 'a'));
+  assert.equal(state.groups.bottom.length, 0);
+  assert.equal(state.tabs.find(item => item.id === 'b'), keep);
+  state = reduce(state, { type: 'close', id: 'b' });
+  state = reduce(state, { type: 'forget', id: 'b' });
+  assert.deepEqual(state.tabs.map(item => item.id), ['files']);
+  assert.equal(reduce(state, { type: 'forget', id: 'missing' }), state);
+  assertInvariant(state);
+});
+
 test('titles can refresh closed tabs without changing their session identity and resize is bounded', () => {
   let state = reduce(createWorkspaceState(), { type: 'open', tab: tab('chat', 'chat') });
   state = reduce(state, { type: 'close', id: 'chat' });

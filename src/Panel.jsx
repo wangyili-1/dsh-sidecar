@@ -3,6 +3,7 @@ import { parsePropertyLabSummary } from './propertylab-summary.mjs';
 import { terminalSessionStore } from './terminal-session-store.mjs';
 import { previewUserMessage } from './message-preview.mjs';
 import ComposerBar from './ComposerBar.jsx';
+import { browserViewportLayout } from './browser-viewport.mjs';
 import './panel.css';
 
 const STALE = Symbol('stale-sidecar-request');
@@ -425,6 +426,28 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedS
   const [browserUrl, setBrowserUrl] = useState('');
   const [browserVersion, setBrowserVersion] = useState(0);
   const [browserError, setBrowserError] = useState('');
+  const [browserMode, setBrowserMode] = useState('fit');
+  const [browserSize, setBrowserSize] = useState({ width: 420, height: 480 });
+  const browserViewport = useRef(null);
+  const browserLayout = browserViewportLayout(browserSize, browserMode);
+  useEffect(() => {
+    if (!browserUrl) return undefined;
+    const viewport = browserViewport.current;
+    if (!viewport) return undefined;
+    const owner = viewport.ownerDocument?.defaultView;
+    const measure = () => {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      // Hidden tabs report zero. Preserve their last useful viewport until shown.
+      if (!(width > 0 && height > 0)) return;
+      setBrowserSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
+    };
+    measure();
+    const observer = owner?.ResizeObserver ? new owner.ResizeObserver(measure) : null;
+    observer?.observe(viewport);
+    owner?.addEventListener?.('resize', measure);
+    return () => { observer?.disconnect(); owner?.removeEventListener?.('resize', measure); };
+  }, [Boolean(browserUrl)]);
   const [quoteUrl, setQuoteUrl] = useState('');
   const [quoteText, setQuoteText] = useState('');
   const navigateBrowser = () => {
@@ -476,7 +499,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedS
     setReturnSending(true);
     setReturnError('');
     try {
-      await call('main/send', { text: returnText.trim(), packets: returnIncludeContext ? returnPackets.map(wirePacket) : [], mode: 'queue' });
+      await call('main/send', { sourceSessionId: sideId, text: returnText.trim(), packets: returnIncludeContext ? returnPackets.map(wirePacket) : [], mode: 'queue' });
       setReturnOpen(false);
       setSelected(new Set());
       notify('补充已排队送回主任务。');
@@ -517,9 +540,9 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedS
           {terminal ? <><div className="dsh-sc-terminal-meta"><span title={terminal.command}>$ {terminal.command}</span><span className={terminal.running ? 'dsh-sc-cyan' : terminal.exitCode ? 'dsh-sc-error-text' : ''}>{terminal.running ? '运行中' : `退出 ${terminal.exitCode ?? '—'}`}</span></div><div className="dsh-sc-terminal-scroll" ref={terminalScroll} onScroll={(event) => { const el = event.currentTarget; followTerminal.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}><pre ref={terminalOutput} className="dsh-sc-terminal-output" aria-label="命令输出" tabIndex={0} onMouseUp={() => setTerminalSelection(readLocalSelection(terminalOutput.current))} onKeyUp={() => setTerminalSelection(readLocalSelection(terminalOutput.current))}>{terminal.output || (terminal.running ? '等待命令输出…' : '命令没有产生输出。')}</pre></div><div className="dsh-sc-source-actions"><span>{terminalSelection ? '已选中输出片段' : !surface && '输出可选中引用'}</span><button className={`dsh-sc-small-button${surface ? ' dsh-sc-action-icon' : ''}`} aria-label="引用选区" title="引用选区" disabled={!terminalSelection || !terminal.output} onClick={() => addPacket({ kind: 'terminal', source: terminal.command, text: terminalSelection.text })}><Icon name="plus" size={surface ? 15 : 12}/>{!surface && '引用选区'}</button><button className={`dsh-sc-text-button${surface ? ' dsh-sc-action-icon' : ''}`} aria-label="引用全部输出" title={terminal.truncated ? '引用已保留输出' : '引用全部输出'} disabled={!terminal.output} onClick={() => addPacket({ kind: 'terminal', source: terminal.command, text: terminal.output })}>{surface ? <Icon name="terminal" size={15}/> : terminal.truncated ? '已保留输出' : '全部'}</button></div></> : <EmptyState icon="terminal" title={terminalRestoring ? '正在恢复上次命令' : surface ? '输入命令' : '让执行结果参与讨论'} compact minimal={Boolean(surface)}>手动运行命令，输出持续更新。交互式程序请使用主应用终端。</EmptyState>}
         </div>
         <div role="tabpanel" id={`${tabId}-panel-browser`} aria-labelledby={`${tabId}-tab-browser`} hidden={tab !== 'browser'} className="dsh-sc-tool dsh-sc-browser-tool">
-          <form className="dsh-sc-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(); }}><Icon name="browser" size={15}/><input aria-label="浏览器网址" value={urlInput} onChange={(event) => setUrlInput(event.target.value)} placeholder="https://… 或 http://localhost:3000" spellCheck={false}/><button className="dsh-sc-icon-button" aria-label="打开网址" title="打开网址" disabled={!urlInput.trim()}><Icon name="arrow"/></button>{browserUrl && <a className="dsh-sc-icon-button" href={browserUrl} target="_blank" rel="noopener noreferrer" aria-label="在外部打开网页" title="在外部打开网页；预览受网站嵌入限制"><Icon name="external" size={14}/></a>}</form>
+          <form className="dsh-sc-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(); }}><Icon name="browser" size={15}/><input aria-label="浏览器网址" value={urlInput} onChange={(event) => setUrlInput(event.target.value)} placeholder="https://… 或 http://localhost:3000" spellCheck={false}/><button className="dsh-sc-icon-button" aria-label="打开网址" title="打开网址" disabled={!urlInput.trim()}><Icon name="arrow"/></button><select className="dsh-sc-browser-mode" aria-label="网页显示方式" title="适应宽度缩放桌面页面；100% 可横向滚动；响应式按侧栏宽度排版" value={browserMode} onChange={(event) => setBrowserMode(event.target.value)}><option value="fit">适应宽度</option><option value="actual">100%</option><option value="responsive">响应式</option></select>{browserUrl && <a className="dsh-sc-icon-button" href={browserUrl} target="_blank" rel="noopener noreferrer" aria-label="在外部打开网页" title="在外部打开网页；预览受网站嵌入限制"><Icon name="external" size={14}/></a>}</form>
           {browserError && <div className="dsh-sc-inline-error" role="alert">{browserError}</div>}
-          {browserUrl ? <div className="dsh-sc-browser-frame"><iframe key={`${browserUrl}-${browserVersion}`} title="Sidecar 网页预览" src={browserUrl} sandbox="allow-scripts allow-forms" referrerPolicy="no-referrer"/>{!surface && <div className="dsh-sc-footnote">沙箱网页预览。若网站拒绝嵌入，请使用外部打开。</div>}</div> : <EmptyState icon="browser" title={surface ? '输入网址' : '在右栏查看页面'} compact minimal={Boolean(surface)}>输入网页或本地开发地址。网页片段由你明确选择并粘贴引用。</EmptyState>}
+          {browserUrl ? <div className="dsh-sc-browser-frame"><div className="dsh-sc-browser-viewport" ref={browserViewport} data-browser-mode={browserMode} tabIndex={0} aria-label="网页预览区域"><div className="dsh-sc-browser-canvas" style={{ width: browserLayout.canvasWidth, height: browserLayout.canvasHeight }}><iframe key={`${browserUrl}-${browserVersion}`} title="Sidecar 网页预览" src={browserUrl} sandbox="allow-scripts allow-forms" referrerPolicy="no-referrer" style={{ width: browserLayout.frameWidth, height: browserLayout.frameHeight, transform: `scale(${browserLayout.scale})` }}/></div></div>{!surface && <div className="dsh-sc-footnote">沙箱网页预览。若网站拒绝嵌入，请使用外部打开。</div>}</div> : <EmptyState icon="browser" title={surface ? '输入网址' : '在右栏查看页面'} compact minimal={Boolean(surface)}>输入网页或本地开发地址。网页片段由你明确选择并粘贴引用。</EmptyState>}
           <details className="dsh-sc-web-quote"><summary><Icon name="link" size={13}/><span>引用网页片段</span>{!surface && <span className="dsh-sc-muted">手动提供</span>}</summary><div><input aria-label="网页引用来源地址" value={quoteUrl} onChange={(event) => setQuoteUrl(event.target.value)} placeholder="来源 URL（HTTP / HTTPS）" spellCheck={false}/><textarea aria-label="网页引用片段" rows={3} value={quoteText} onChange={(event) => setQuoteText(event.target.value)} placeholder={surface ? '粘贴要引用的文字' : '粘贴需要引用的文字。右栏不会自动读取网页内容。'} title="手动提供网页片段，右栏不会自动读取网页内容"/><button className={`dsh-sc-small-button${surface ? ' dsh-sc-action-icon' : ''}`} aria-label="加入上下文包" title="引用网页片段" disabled={!quoteText.trim() || !quoteUrl.trim()} onClick={addWebQuote}><Icon name="plus" size={surface ? 15 : 12}/>{!surface && '加入上下文包'}</button></div></details>
         </div>
       </section>

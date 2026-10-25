@@ -99,6 +99,11 @@ export function workspaceTabsReducer(state, action) {
         active: state.active[group] === action.id ? { ...state.active, [group]: remaining[Math.min(index, remaining.length - 1)] ?? null } : state.active,
       });
     }
+    case 'forget': {
+      if (!state.tabs.some(tab => tab.id === action.id)) return state;
+      const closed = workspaceTabsReducer(state, { type: 'close', id: action.id });
+      return finish(closed, { tabs: closed.tabs.filter(tab => tab.id !== action.id) });
+    }
     case 'merge': {
       if (!state.groups.bottom.length) return state;
       return finish(state, {

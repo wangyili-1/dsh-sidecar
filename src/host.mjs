@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { createSidecarService } from './service.mjs';
 
 export const name = 'dsh-sidecar';
-export const inject = ['connection', 'sessionController'];
+export const inject = ['connection', 'sessionController', 'workspaceController'];
 
 /** Use the installed DSH connection so every request retains its browser trust and authentication checks. */
 export function apply(ctx, config = {}) {

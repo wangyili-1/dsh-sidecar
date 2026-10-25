@@ -1,4 +1,5 @@
 // DSH 0.1.2-rc.1 wire projection. Deliberately excludes reasoning and request headers.
+import { explicitPromptFromWire, promptTitle } from './sidechat-titles.mjs';
 const MAX_MESSAGES = 200;
 const MAX_TEXT = 256 * 1024;
 
@@ -41,6 +42,8 @@ export function resetProjection(cache) {
   cache.runningKnown = false;
   cache.lastSeq = -1;
   cache.completedSeq = -1;
+  cache.firstSeq = undefined;
+  cache.firstPromptTitle = '';
 }
 
 function put(cache, message) {
@@ -53,6 +56,7 @@ function put(cache, message) {
 export function applyEvent(cache, event) {
   if (!event || !Number.isSafeInteger(event.seq) || typeof event.type !== 'string') throw new Error('Malformed session event');
   if (event.seq <= cache.lastSeq) return;
+  cache.firstSeq ??= event.seq;
   cache.lastSeq = event.seq;
   const data = event.data ?? {};
   const time = Number.isFinite(event.time) ? event.time : 0;
@@ -64,6 +68,7 @@ export function applyEvent(cache, event) {
     // Synthetic context injections remain distinguishable from human turns.
     const role = data.source?.kind === 'user' ? 'user' : 'system';
     const text = visibleText(data.content);
+    if (role === 'user' && !cache.firstPromptTitle) cache.firstPromptTitle = promptTitle(explicitPromptFromWire(text));
     if (text) put(cache, { ...base, id: `user:${data.id ?? event.seq}`, role, text });
   }
   const streamKey = `${data.turn}:${data.step}`;

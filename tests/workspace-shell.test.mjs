@@ -14,8 +14,8 @@ const compiled = await build({
   } }],
 });
 
-function harness({ intent, strict = false, sidechats = [], create } = {}) {
-  const slots = [], pending = new Set(), calls = [], timers = [];
+function harness({ intent, strict = false, sidechats = [], create, close, state } = {}) {
+  const slots = [], pending = new Set(), calls = [], timers = [], polls = [];
   let cursor = 0, dirty = false, tree, props, ordinal = 0;
   const same = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
   const slot = initial => slots[cursor] || (slots[cursor] = initial());
@@ -41,14 +41,15 @@ function harness({ intent, strict = false, sidechats = [], create } = {}) {
   const module = { exports: {} };
   vm.runInNewContext(compiled.outputFiles[0].text, {
     module, exports: module.exports, queueMicrotask,
-    setInterval: () => 1, clearInterval() {},
+    setInterval: fn => { polls.push(fn); return polls.length; }, clearInterval() {},
     setTimeout: run => { timers.push(run); return timers.length; }, clearTimeout() {},
     require: name => name === 'react' ? react : { jsx, jsxs: jsx },
   });
   const api = { async call(endpoint, payload) {
     calls.push({ endpoint, payload });
-    if (endpoint === 'state') return { main: { title: 'Main' }, sidechats };
+    if (endpoint === 'state') return state ? state() : { main: { title: 'Main' }, sidechats };
     if (endpoint === 'sidechat/create') return create ? create() : { id: `side-${++ordinal}`, title: `Side ${ordinal}` };
+    if (endpoint === 'sidechat/close') return close ? close(payload) : { id: payload.sessionId, closed: true, historyRetained: true };
     throw new Error(`Unexpected shell RPC: ${endpoint}`);
   } };
   const visit = (value, callback) => {
@@ -77,6 +78,7 @@ function harness({ intent, strict = false, sidechats = [], create } = {}) {
     surfaces() { return nodes(node => node.props?.className === 'dsh-ws-surface'); },
     unmount() { for (const item of slots) if (item?.effect) item.cleanup?.(); },
     runTimers() { for (const timer of timers.splice(0)) timer(); },
+    async poll() { await Promise.all(polls.map(fn => fn())); await this.flush(); },
   };
 }
 
@@ -187,4 +189,56 @@ test('tool citations route to one owned chat with unique packet ids and failure 
   const failed = harness({ intent: { sequence: 1, tool: 'files' }, create: () => { throw new Error('fixture failure'); } }); await failed.flush();
   await assert.rejects(surfaceOf(failed, 'files')[0].props.children.props.onPacket({ kind: 'file', source: 'keep.py', text: 'keep' }), /引用内容仍保留/);
   failed.unmount();
+});
+
+test('permanent close removes the owned surface and cached restore entry, surviving stale state polls', async () => {
+  let settle;
+  const side = { id: 'retire-me', title: '解析日期格式错误' };
+  const h = harness({ intent: { sequence: 1, tool: 'chat' }, sidechats: [side], close: () => new Promise(resolve => { settle = resolve; }) });
+  await h.flush();
+  const chat = surfaceOf(h, 'chat')[0].props.children;
+  chat.props.onPacketsChange([{ kind: 'message', text: 'pending citation' }]); await h.flush();
+  await menu(h);
+  const remove = h.find(label(`永久关闭 ${side.title}`));
+  remove.props.onClick(); remove.props.onClick(); await h.flush();
+  assert.equal(h.calls.filter(call => call.endpoint === 'sidechat/close').length, 1);
+  assert.equal(h.find(label(`永久关闭 ${side.title}`)).props.disabled, true);
+  assert.equal(surfaceOf(h, 'chat').length, 1, 'a pending close must preserve the chat until acknowledged');
+  settle({ id: side.id, closed: true, historyRetained: true }); await h.flush();
+  const request = h.calls.find(call => call.endpoint === 'sidechat/close');
+  assert.equal(request.payload.mainSessionId, 'main-fixture');
+  assert.equal(request.payload.sessionId, side.id);
+  assert.equal(surfaceOf(h, 'chat').length, 0);
+  assert.equal(h.nodes(label(`恢复标签 ${side.title}`)).length, 0);
+  await h.poll();
+  assert.equal(h.nodes(label(`永久关闭 ${side.title}`)).length, 0, 'an older state reply cannot resurrect the retired session');
+  assert.equal(surfaceOf(h, 'browser').length, 1, 'unrelated web state remains mounted');
+  h.unmount();
+});
+
+test('failed close retains the chat and pending citations with a persistent actionable error', async () => {
+  const side = { id: 'busy', title: '核对依赖冲突' };
+  const h = harness({ intent: { sequence: 1, tool: 'chat' }, sidechats: [side], close: () => { throw new Error('请先停止正在运行的侧聊'); } });
+  await h.flush();
+  surfaceOf(h, 'chat')[0].props.children.props.onPacketsChange([{ text: 'keep this' }]); await h.flush();
+  await menu(h); h.find(label(`永久关闭 ${side.title}`)).props.onClick(); await h.flush(); await h.poll();
+  assert.equal(surfaceOf(h, 'chat').length, 1);
+  assert.equal(surfaceOf(h, 'chat')[0].props.children.props.packets[0].text, 'keep this');
+  assert.equal(h.find(label(`永久关闭 ${side.title}`)).props.disabled, false);
+  assert(h.nodes(node => node.props?.children === '请先停止正在运行的侧聊').length);
+  h.unmount();
+});
+
+test('a closed-session update from another window removes its cached tab without another close call', async () => {
+  const side = { id: 'elsewhere', title: '修复网页排版' };
+  let snapshot = { sidechats: [side], closedSidechatIds: [] };
+  const h = harness({ intent: { sequence: 1, tool: 'chat' }, state: () => snapshot }); await h.flush();
+  h.find(label(`关闭标签 ${side.title}`)).props.onClick(); await h.flush();
+  assert.equal(surfaceOf(h, 'chat').length, 1);
+  snapshot = { sidechats: [], closedSidechatIds: [side.id] }; await h.poll();
+  assert.equal(surfaceOf(h, 'chat').length, 0);
+  await menu(h);
+  assert.equal(h.nodes(label(`恢复标签 ${side.title}`)).length, 0);
+  assert(!h.calls.some(call => call.endpoint === 'sidechat/close'));
+  h.unmount();
 });

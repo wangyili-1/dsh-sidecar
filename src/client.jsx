@@ -60,6 +60,44 @@ function HeaderToolbar({ useSidecarState, onToggle, onTool }) {
   if (state.visible || state.blank) return null;
   return <Toolbar state={state} onToggle={onToggle} onTool={onTool}/>;
 }
+function ResizeHandle({ dock, visible }) {
+  const [snapshot, setSnapshot] = useState({ panelWidth: 420, minWidth: 320, maxWidth: 960, ready: false, resizing: false });
+  const handle = useRef(null);
+  const pointer = useRef(null);
+  const releasePointer = (cancelled, clientX) => {
+    const active = pointer.current;
+    if (!active) return;
+    pointer.current = null;
+    active.binding.endResize(active.id, clientX, cancelled);
+    try { if (active.element.hasPointerCapture(active.id)) active.element.releasePointerCapture(active.id); } catch { /* Removed or lost capture. */ }
+  };
+  useEffect(() => {
+    // Parent layout effects attach the adapter before this passive subscription.
+    const binding = dock.current;
+    if (!binding) return undefined;
+    const refresh = () => setSnapshot(binding.getSnapshot());
+    const unsubscribe = binding.subscribe(refresh);
+    refresh();
+    const view = handle.current?.ownerDocument?.defaultView;
+    const blur = () => releasePointer(true);
+    view?.addEventListener('blur', blur);
+    return () => { releasePointer(true); unsubscribe(); view?.removeEventListener('blur', blur); };
+  }, [dock]);
+  useEffect(() => { if (!visible) releasePointer(true); }, [visible]);
+  return <div ref={handle} className={`dsh-sc-resize-handle${snapshot.resizing ? ' is-dragging' : ''}`} role="separator" aria-label="调整侧栏宽度" aria-orientation="vertical" aria-valuemin={Math.round(snapshot.minWidth)} aria-valuemax={Math.round(snapshot.maxWidth)} aria-valuenow={Math.round(snapshot.panelWidth)} aria-valuetext={`${Math.round(snapshot.panelWidth)} 像素`} aria-disabled={!snapshot.ready || snapshot.maxWidth <= snapshot.minWidth} tabIndex={visible && snapshot.ready ? 0 : -1} title="拖动调整侧栏宽度；方向键微调，双击恢复默认" onPointerDown={event => {
+    if (!visible || event.button !== 0 || event.isPrimary === false || pointer.current) return;
+    const binding = dock.current;
+    const element = event.currentTarget;
+    if (!binding?.startResize(event.pointerId, event.clientX, element.parentElement.getBoundingClientRect().width)) return;
+    event.preventDefault();
+    pointer.current = { id: event.pointerId, element, binding };
+    try { element.setPointerCapture(event.pointerId); element.focus({ preventScroll: true }); }
+    catch { releasePointer(true); }
+  }} onPointerMove={event => { if (pointer.current?.id === event.pointerId) pointer.current.binding.moveResize(event.pointerId, event.clientX); }} onPointerUp={event => { if (pointer.current?.id === event.pointerId) releasePointer(false, event.clientX); }} onPointerCancel={event => { if (pointer.current?.id === event.pointerId) releasePointer(true); }} onLostPointerCapture={event => { if (pointer.current?.id === event.pointerId) releasePointer(true); }} onDoubleClick={() => dock.current?.resetWidth()} onKeyDown={event => {
+    if (event.key === 'Escape' && pointer.current) { event.preventDefault(); releasePointer(true); return; }
+    if (dock.current?.resizeByKey(event.key, event.shiftKey)) event.preventDefault();
+  }}><span/></div>;
+}
 function Overlay({ api, useSidecarState, onToggle, onTool, onClose }) {
   const state = useSidecarState(value => value);
   const root = useRef(null);
@@ -76,6 +114,7 @@ function Overlay({ api, useSidecarState, onToggle, onTool, onClose }) {
     <div className="dsh-sc-global-panel" data-open={state.visible ? 'true' : 'false'} aria-hidden={!state.visible} inert={state.visible ? undefined : ''}>
       {state.error && <div className="dsh-sc-launcher-notice" role="status">{state.error}</div>}
       {state.opened && (state.mainSessionId ? <Panel key={state.mainSessionId} api={api} mainSessionId={state.mainSessionId} toolIntent={state.toolIntent}/> : <aside className="dsh-sc-launcher-empty" aria-label="Sidecar 右栏"><strong>{state.busy ? '连接中…' : '选择工作区'}</strong></aside>)}
+      <ResizeHandle dock={dock} visible={state.visible}/>
     </div>
   </div>;
 }

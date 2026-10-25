@@ -12,11 +12,17 @@ const compiled = await build({
 
 // Exercise the real component's closures with deterministic hook commits and
 // effect replay. This is a lifecycle contract harness, not a browser renderer.
-function harness({ intent, strict = false, sidechats = [], create, surfaceProps = {}, request } = {}) {
+function harness({ intent, strict = false, sidechats = [], create, surfaceProps = {}, request, viewportSize } = {}) {
   const hooks = [];
   const pending = new Set();
   const calls = [];
   const intervals = new Map();
+  const viewportObservers = new Set();
+  class ViewportObserver {
+    constructor(notify) { this.notify = notify; }
+    observe() { viewportObservers.add(this); }
+    disconnect() { viewportObservers.delete(this); }
+  }
   let nextInterval = 0;
   let cursor = 0;
   let dirty = false;
@@ -80,6 +86,9 @@ function harness({ intent, strict = false, sidechats = [], create, surfaceProps 
       if (typeof node.type !== 'string' || !node.props?.ref) return;
       const ref = node.props.ref;
       ref.current ||= { focused: 0, focus() { this.focused++; } };
+      if (node.props.className === 'dsh-sc-browser-viewport' && viewportSize && !ref.current.ownerDocument) {
+        Object.assign(ref.current, { clientWidth: viewportSize.width, clientHeight: viewportSize.height, ownerDocument: { defaultView: { ResizeObserver: ViewportObserver } } });
+      }
       ref.current.disabled = Boolean(node.props.disabled);
     });
     for (const entry of pending) { entry.cleanup?.(); entry.cleanup = entry.run(); }
@@ -93,6 +102,13 @@ function harness({ intent, strict = false, sidechats = [], create, surfaceProps 
   return {
     calls, render,
     updateSurface(value) { surfaceProps = { ...surfaceProps, ...value }; render(); },
+    async resizeBrowser(width, height) {
+      const viewport = this.find(node => node.props?.className === 'dsh-sc-browser-viewport').props.ref.current;
+      Object.assign(viewport, { clientWidth: width, clientHeight: height });
+      for (const observer of viewportObservers) observer.notify();
+      await this.flush();
+    },
+    viewportObservers,
     async tick() { for (const callback of [...intervals.values()]) await callback(); await this.flush(); },
     async flush() { for (let i = 0; i < 12; i++) { await Promise.resolve(); if (dirty) render(); } },
     find(predicate) { let result; visit(tree, (node) => { if (predicate(node)) result = node; }); assert(result, 'Expected UI element'); return result; },
@@ -253,6 +269,58 @@ test('browser-only surfaces keep their own URL and quote state without polling c
   assert.deepEqual(first.calls, []);
   assert.deepEqual(second.calls, []);
   first.unmount(); second.unmount();
+});
+
+test('browser sizing follows pane resizes and view modes without remounting or navigating the page', async () => {
+  const h = harness({ surfaceProps: { surface: 'browser' }, viewportSize: { width: 420, height: 600 } });
+  await h.flush();
+  enter(h, '浏览器网址', 'https://fixed.example/'); await h.flush();
+  h.find(formFor('浏览器网址')).props.onSubmit({ preventDefault() {} }); await h.flush();
+  const initial = h.find(node => node.type === 'iframe');
+  assert.equal(initial.props.style.width, 1280);
+  assert.equal(initial.props.style.transform, 'scale(0.328125)');
+  assert.equal(initial.props.sandbox, 'allow-scripts allow-forms');
+  enter(h, '网页引用片段', 'preserved quote'); await h.flush();
+  await h.resizeBrowser(960, 280);
+  const resized = h.find(node => node.type === 'iframe');
+  assert.equal(resized.key, initial.key);
+  assert.equal(resized.props.src, initial.props.src);
+  assert.equal(resized.props.style.transform, 'scale(0.75)');
+  assert.equal(resized.props.style.height, 280 / 0.75);
+  await h.resizeBrowser(0, 0);
+  assert.deepEqual(h.find(node => node.type === 'iframe').props.style, resized.props.style, 'hidden tabs retain their last measured layout');
+  enter(h, '网页显示方式', 'actual'); await h.flush();
+  assert.equal(h.find(node => node.props?.className === 'dsh-sc-browser-canvas').props.style.width, 1280);
+  assert.equal(h.find(node => node.type === 'iframe').props.style.transform, 'scale(1)');
+  enter(h, '网页显示方式', 'responsive'); await h.flush();
+  assert.equal(h.find(node => node.type === 'iframe').props.style.width, 960);
+  await h.resizeBrowser(560, 450);
+  assert.equal(h.find(node => node.type === 'iframe').props.style.width, 560);
+  assert.equal(h.find(node => node.type === 'iframe').key, initial.key);
+  assert.equal(h.find(byLabel('网页引用片段')).props.value, 'preserved quote');
+  assert.deepEqual(h.calls, [], 'resize and view-mode controls must not send requests');
+  assert.equal(h.viewportObservers.size, 1);
+  h.unmount();
+  assert.equal(h.viewportObservers.size, 0);
+});
+
+test('returning a sidechat message identifies its source so closed sessions cannot bypass the server guard', async () => {
+  const h = harness({
+    surfaceProps: { surface: 'chat', fixedSidechat: { id: 'return-source', title: 'Source' } },
+    request(endpoint, payload) {
+      if (endpoint === 'conversation/get') return { id: payload.sessionId, title: 'Source', messages: [{ id: 'reply', role: 'assistant', text: 'A reviewed result' }] };
+      if (endpoint === 'main/send') return { accepted: true };
+    },
+  });
+  await h.flush();
+  h.find(node => node.type === 'dialog').props.ref.current = { open: false, showModal() { this.open = true; }, close() { this.open = false; } };
+  h.find(byLabel('送回主任务')).props.onClick(); await h.flush();
+  await h.find(node => node.type === 'button' && node.props.children?.includes?.('确认排队发送')).props.onClick(); await h.flush();
+  const request = h.calls.find(call => call.endpoint === 'main/send');
+  assert.equal(request.payload.sourceSessionId, 'return-source');
+  assert.equal(request.payload.mode, 'queue');
+  assert.match(request.payload.text, /A reviewed result/);
+  h.unmount();
 });
 
 test('controlled context packets and external web delivery update only their chosen chat', async () => {

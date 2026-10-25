@@ -134,8 +134,12 @@
 .dsh-sc-terminal-warning strong { color: #edce92; font-weight: 600; }
 .dsh-sc-terminal-scroll { flex: 1; min-height: 25px; overflow: auto; background: var(--sc-bg); border-top: 1px solid var(--sc-line); }
 .dsh-sc-terminal-output { padding: 10px 12px; color: var(--sc-secondary); white-space: pre-wrap; overflow-wrap: anywhere; min-height: 100%; }
-.dsh-sc-browser-frame { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.dsh-sc-browser-frame iframe { flex: 1; min-height: 30px; width: 100%; border: 0; background: white; }
+.dsh-sidecar .dsh-sc-address .dsh-sc-browser-mode { flex: 0 0 auto; width: auto; max-width: 108px; padding: 4px 3px; border: 0; border-radius: 5px; background: transparent; color: var(--sc-secondary); cursor: pointer; }
+.dsh-sc-browser-mode option { background: var(--sc-bg); color: var(--sc-ink); }
+.dsh-sc-browser-frame { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+.dsh-sc-browser-viewport { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; background: white; color-scheme: light; }
+.dsh-sc-browser-canvas { position: relative; flex: none; overflow: hidden; }
+.dsh-sc-browser-frame iframe { display: block; position: absolute; top: 0; left: 0; max-width: none; max-height: none; border: 0; background: white; transform-origin: top left; }
 .dsh-sc-web-quote { flex: 0 0 auto; max-height: 72%; overflow: auto; border-top: 1px solid var(--sc-line); background: var(--sc-surface); }
 .dsh-sc-web-quote > summary { display: flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 10px; color: var(--sc-secondary); list-style: none; }
 .dsh-sc-web-quote > summary::-webkit-details-marker { display: none; }

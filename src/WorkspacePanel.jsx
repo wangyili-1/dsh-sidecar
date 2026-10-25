@@ -60,8 +60,12 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
   const remoteRef = useRef(remote);
   remoteRef.current = remote;
   const [error, setError] = useState('');
+  const [connectionError, setConnectionError] = useState('');
   const [notice, setNotice] = useState('');
   const [creating, setCreating] = useState(false);
+  const [closing, setClosing] = useState([]);
+  const closingIds = useRef(new Set());
+  const closedIds = useRef(new Set());
   const pendingCreate = useRef(null);
   const sequence = useRef(1);
   const handledIntent = useRef(null);
@@ -81,6 +85,13 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
   const split = workspace.groups.bottom.length > 0;
   const getTab = useCallback(id => current.current.tabs.find(tab => tab.id === id), []);
   const createPacketId = useCallback(() => `packet-${sequence.current++}`, []);
+  const forgetChat = useCallback(sessionId => {
+    closedIds.current.add(sessionId);
+    const id = `chat-${sessionId}`;
+    if (lastChat.current === id) lastChat.current = null;
+    dispatch({ type: 'forget', id });
+    setPacketLists(value => { if (!Object.hasOwn(value, id)) return value; const next = { ...value }; delete next[id]; return next; });
+  }, []);
   const revealActiveTabs = useCallback(() => {
     if (!root.current) return;
     const buttons = Array.from(root.current.querySelectorAll('[data-ws-tab-id]'));
@@ -113,16 +124,18 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
       try {
         const value = await transport.current.call('state', { mainSessionId });
         if (disposed) return;
-        setRemote(value);
-        setError('');
-        for (const side of value.sidechats || []) dispatch({ type: 'title', id: `chat-${side.id}`, title: side.title || '侧聊' });
-      } catch (failure) { if (!disposed) setError(failure?.message || '连接暂不可用，请稍后重试。'); }
+        for (const id of value.closedSidechatIds || []) if (!closedIds.current.has(id)) forgetChat(id);
+        const sidechats = (value.sidechats || []).filter(side => !closedIds.current.has(side.id));
+        setRemote({ ...value, sidechats });
+        setConnectionError('');
+        for (const side of sidechats) dispatch({ type: 'title', id: `chat-${side.id}`, title: side.title || '新对话' });
+      } catch (failure) { if (!disposed) setConnectionError(failure?.message || '连接暂不可用，请稍后重试。'); }
       finally { pending = false; }
     };
     void poll();
     const timer = setInterval(poll, POLL_MS);
     return () => { disposed = true; clearInterval(timer); };
-  }, [mainSessionId]);
+  }, [mainSessionId, forgetChat]);
   useEffect(() => {
     if (!notice) return undefined;
     const timer = setTimeout(() => setNotice(''), 5000);
@@ -143,12 +156,34 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
   }, [menu]);
 
   const open = useCallback((tab, group) => {
+    if (tab.kind === 'chat' && closedIds.current.has(tab.sessionId)) return null;
     dispatch({ type: 'open', tab, group });
     if (tab.kind === 'chat') lastChat.current = tab.id;
     setMenu(null);
     return tab;
   }, []);
-  const openChat = useCallback((side, group) => open({ id: `chat-${side.id}`, kind: 'chat', sessionId: side.id, title: side.title || '侧聊' }, group), [open]);
+  const openChat = useCallback((side, group) => open({ id: `chat-${side.id}`, kind: 'chat', sessionId: side.id, title: side.title || '新对话' }, group), [open]);
+  const closeChat = useCallback(async side => {
+    if (closingIds.current.has(side.id) || closedIds.current.has(side.id)) return;
+    closingIds.current.add(side.id);
+    setClosing([...closingIds.current]);
+    setError('');
+    try {
+      const result = await transport.current.call('sidechat/close', { mainSessionId, sessionId: side.id });
+      if (!result?.closed) throw new Error('侧聊未能关闭，请重试。');
+      if (!alive.current) return;
+      forgetChat(side.id);
+      const remove = value => value ? { ...value, sidechats: (value.sidechats || []).filter(item => item.id !== side.id) } : value;
+      remoteRef.current = remove(remoteRef.current);
+      setRemote(remove);
+      setNotice('已关闭侧聊，聊天记录已保留。');
+    } catch (failure) {
+      if (alive.current) setError(failure?.message || '侧聊未能关闭，请重试。');
+    } finally {
+      closingIds.current.delete(side.id);
+      if (alive.current) setClosing([...closingIds.current]);
+    }
+  }, [mainSessionId, forgetChat]);
   const newChat = useCallback((group, includeContext = false) => {
     if (pendingCreate.current) return pendingCreate.current;
     setCreating(true);
@@ -211,6 +246,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
     } else open(target, groupForTab(snapshot, target.id) || snapshot.focused);
     if (!target) throw new Error('未能准备侧聊，引用内容仍保留，请重试。');
     if (!alive.current) return;
+    if (closedIds.current.has(target.sessionId)) throw new Error('该侧聊已关闭，请选择其他侧聊。');
     updatePackets(target.id, value => [...value, { ...packet, _id: createPacketId() }]);
     setNotice(`已加入「${target.title}」的上下文包，发送前可以审阅。`);
   }, [createPacketId, getTab, newChat, open, openChat, updatePackets]);
@@ -297,7 +333,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
         <button type="button" role="menuitem" onClick={() => openTool('browser', group, true)}><Icon kind="browser"/>新建网页</button>
         <button type="button" role="menuitem" disabled={creating} onClick={() => { setMenu(null); void newChat(group); }}><Icon kind="chat"/>{creating ? '创建中…' : '新建侧聊'}</button>
         <button type="button" role="menuitem" aria-label="新建侧聊（带主任务上下文）" disabled={creating} onClick={() => { setMenu(null); void newChat(group, true); }}><Icon kind="chat"/>新建上下文侧聊</button>
-        {(remote?.sidechats?.length > 0) && <><div className="dsh-ws-menu-label">继续侧聊</div>{remote.sidechats.map(side => <button key={side.id} type="button" role="menuitem" onClick={() => openChat(side, group)}><Icon kind="chat"/><span>{side.title || '侧聊'}</span></button>)}</>}
+        {(remote?.sidechats?.length > 0) && <><div className="dsh-ws-menu-label">继续侧聊</div>{remote.sidechats.map(side => <div key={side.id} className="dsh-ws-chat-row" data-sidechat-id={side.id} role="none"><button type="button" role="menuitem" disabled={closing.includes(side.id)} title={side.title || '新对话'} onClick={() => openChat(side, group)}><Icon kind="chat"/><span>{side.title || '新对话'}</span></button><button type="button" role="menuitem" className="dsh-ws-chat-remove" disabled={closing.includes(side.id)} aria-label={`永久关闭 ${side.title || '新对话'}`} title="永久关闭此侧聊（保留聊天记录）" onClick={() => void closeChat(side)}><Icon kind="close" size={13}/></button></div>)}</>}
         {workspace.tabs.some(tab => !groupForTab(workspace, tab.id)) && <><div className="dsh-ws-menu-label">已关闭</div>{workspace.tabs.filter(tab => !groupForTab(workspace, tab.id)).slice(-5).reverse().map(tab => <button key={tab.id} type="button" role="menuitem" aria-label={`恢复标签 ${tab.title}`} onClick={() => open(tab, group)}><Icon kind={tab.kind}/><span>{tab.title}</span></button>)}</>}
         <div className="dsh-ws-menu-label">布局</div>
         <button type="button" role="menuitem" disabled={!workspace.active[group] || openTabIds(workspace).length < 2} onClick={() => splitActive(group)}><Icon kind="split"/>{group === 'top' ? '移到下方' : '移到上方'}</button>
@@ -324,7 +360,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
       {!workspace.groups.top.length && <div className="dsh-ws-empty" style={{ gridRow: 2, gridColumn: 1 }}><button type="button" className="dsh-sc-small-button" onClick={() => setMenu('top')}><Icon kind="plus"/>添加标签</button></div>}
       {drag?.target?.zone === 'pane' && <div className={`dsh-ws-drop-preview is-${drag.target.to}`} aria-hidden="true"><span>{drag.target.to === 'bottom' ? '放到下方分屏' : split ? '移到上方分屏' : '放到顶部标签组'}</span></div>}
     </div>
-    {(error || notice) && <div className={`dsh-ws-notice${error ? ' is-error' : ''}`} role="status"><span>{error || notice}</span><button type="button" aria-label="关闭提示" onClick={() => { setError(''); setNotice(''); }}><Icon kind="close" size={12}/></button></div>}
+    {(error || connectionError || notice) && <div className={`dsh-ws-notice${error || connectionError ? ' is-error' : ''}`} role="status"><span>{error || connectionError || notice}</span><button type="button" aria-label="关闭提示" onClick={() => { setError(''); setConnectionError(''); setNotice(''); }}><Icon kind="close" size={12}/></button></div>}
     <span className="dsh-ws-screen-reader" aria-live="polite">{drag ? '拖动标签：放入标签栏可排序，放到下方可分屏。' : ''}</span>
   </aside>;
 }
