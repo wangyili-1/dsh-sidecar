@@ -10,7 +10,7 @@ const compiled = await build({
   bundle: true, write: false, platform: 'browser', format: 'cjs', jsx: 'automatic',
   external: ['react', 'react/jsx-runtime'],
   plugins: [{ name: 'native-contract-stubs', setup(builder) {
-    builder.onResolve({ filter: /\.\/Panel\.jsx$/ }, () => ({ path: 'Panel', namespace: 'test-panel' }));
+    builder.onResolve({ filter: /\.\/WorkspacePanel\.jsx$/ }, () => ({ path: 'Panel', namespace: 'test-panel' }));
     builder.onLoad({ filter: /.*/, namespace: 'test-panel' }, () => ({ loader: 'js', contents: 'export default function Panel(){return null}' }));
     builder.onLoad({ filter: /\.css$/ }, () => ({ loader: 'js', contents: '' }));
   } }],

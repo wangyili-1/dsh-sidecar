@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-25",
+  "version": "0.3.0",
+  "platform": "Windows 11",
+  "dshVersion": "0.1.2-rc.1",
+  "target": "Existing DSH Web service on loopback port 3080",
+  "modelMessagesSent": 0,
+  "newEmptySidechatsCreated": 1,
+  "automatedTests": { "passed": 77, "failed": 0, "skipped": 0 },
+  "observations": [
+    {
+      "check": "Pointer drag terminal tab from top bar into lower content region",
+      "result": "pass",
+      "observed": "Files remained above; terminal appeared in a new bottom tab group with separator value 50."
+    },
+    {
+      "check": "Pointer drag terminal tab before files within the same bar",
+      "result": "pass",
+      "observed": ["终端", "文件"]
+    },
+    {
+      "check": "Two independent browser iframes retain entered values",
+      "result": "pass",
+      "observed": "Page A and B retained different notes through tab activation, split, merge, close and restore."
+    },
+    {
+      "check": "Keyboard splitter resize",
+      "result": "pass",
+      "observed": "ArrowDown changed separator aria-valuenow from 50 to 55."
+    },
+    {
+      "check": "Independent drafts in two real sidechat sessions",
+      "result": "pass",
+      "observed": "Different A/B drafts displayed together; closing and restoring B retained its draft; verification drafts were cleared without sending."
+    },
+    {
+      "check": "Closing the final lower tab collapses split",
+      "result": "pass",
+      "observed": "Lower bar and separator disappeared; restore item remained available in the plus menu."
+    },
+    {
+      "check": "Browser console after final UI checks",
+      "result": "pass",
+      "observed": "No captured error-level console entries."
+    }
+  ],
+  "screenshots": ["tabbed-workspace.jpg", "two-webpages.jpg"],
+  "fixture": "docs/tab-preview-server.mjs",
+  "limits": [
+    "Pointer drag was verified on the real terminal tab. Webpage state preservation was verified using split, merge and restore controls; automation could not safely drive coordinates across fractional iframe bounds.",
+    "No model send/concurrency acceptance was repeated for this UI change; earlier real model results remain separately documented.",
+    "Tab layout, unsent drafts and iframe state are cached within the current page/main-session lifetime, not restored across page reload."
+  ]
+}

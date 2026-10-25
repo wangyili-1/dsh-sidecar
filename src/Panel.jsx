@@ -91,18 +91,18 @@ function PropertyLabSummary({ text }) {
   return <details className="dsh-sc-property" open><summary><span className="dsh-sc-eyebrow">PROPERTYLAB</span><span>文件中的结果</span></summary><div className="dsh-sc-property-body"><div className="dsh-sc-property-stats"><span>状态 <b>{report.statusText}</b></span><span>Evaluations <b>{report.evaluationsText}</b></span></div><span className="dsh-sc-small-label">最小反例</span><pre>{report.hasCounterexample === false ? '未确认反例（请结合运行状态）。' : report.hasCounterexampleValue ? report.counterexampleRaw : '文件未提供最小反例。'}</pre><details><summary>查看 evaluations</summary><pre>{report.evaluationsRaw}</pre><p>评估次数可能包含生成与收缩，不等于不同输入数。</p></details></div></details>;
 }
 
-export default function Panel({ api, mainSessionId, onClose, toolIntent }) {
+export default function Panel({ api, mainSessionId, onClose, toolIntent, ...surfaceProps }) {
   if (!mainSessionId) {
     return <aside className="dsh-sidecar" aria-label="Sidecar 右栏"><PanelHeading onClose={onClose}/><EmptyState icon="chat" title="先选择一个主会话">在 DSH 中选择需要协作的主会话。文件、命令与侧聊会关联到该会话的工作区。</EmptyState></aside>;
   }
-  return <PanelSession key={String(mainSessionId)} api={api} mainSessionId={mainSessionId} onClose={onClose} toolIntent={toolIntent}/>;
+  return <PanelSession key={String(mainSessionId)} api={api} mainSessionId={mainSessionId} onClose={onClose} toolIntent={toolIntent} {...surfaceProps}/>;
 }
 
 function PanelHeading({ onClose }) {
   return <header className="dsh-sc-heading"><div className="dsh-sc-brand"><Icon name="panel" size={16}/><span>Sidecar<small>工作台 · 独立侧聊</small></span></div>{onClose && <button className="dsh-sc-icon-button" aria-label="关闭 Sidecar" title="关闭右栏" onClick={onClose}><Icon name="close"/></button>}</header>;
 }
 
-function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
+function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedSidechat, onPacket, packets: externalPackets, onPacketsChange, createPacketId, onTitle }) {
   const identity = useRef(1);
   const alive = useRef(true);
   const apiRef = useRef(api);
@@ -134,7 +134,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  const [tab, setTab] = useState('files');
+  const [tab, setTab] = useState(surface && surface !== 'chat' ? surface : 'files');
   const [split, setSplit] = useState(48);
   const splitRoot = useRef(null);
   const dragging = useRef(false);
@@ -144,10 +144,10 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
     if (bounds?.height) setSplit(Math.min(73, Math.max(25, ((clientY - bounds.top) / bounds.height) * 100)));
   };
 
-  const [sideId, setSideId] = useState('');
+  const [sideId, setSideId] = useState(fixedSidechat?.id || '');
   const activeSide = useRef(sideId);
   activeSide.current = sideId;
-  const [sideTitle, setSideTitle] = useState('');
+  const [sideTitle, setSideTitle] = useState(fixedSidechat?.title || '');
   const [includeContext, setIncludeContext] = useState(false);
   const [creating, setCreating] = useState(false);
   const [conversation, setConversation] = useState(null);
@@ -158,9 +158,13 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
   const [selected, setSelected] = useState(new Set());
   const [showRuntimeContext, setShowRuntimeContext] = useState(false);
   const [expandedMessages, setExpandedMessages] = useState(new Set());
-  const [packets, setPackets] = useState([]);
+  const [localPackets, setLocalPackets] = useState([]);
+  const packets = externalPackets ?? localPackets;
+  const setPackets = onPacketsChange ?? setLocalPackets;
   const [packetsOpen, setPacketsOpen] = useState(false);
   const nextPacketId = useRef(1);
+  useEffect(() => { if (packets.length) setPacketsOpen(true); }, [packets.length]);
+  useEffect(() => { if (surface === 'chat' && sideTitle) onTitle?.(sideTitle); }, [onTitle, sideTitle, surface]);
   const messageScroll = useRef(null);
   const followMessages = useRef(true);
   const composerInput = useRef(null);
@@ -174,6 +178,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
   useEffect(() => { focusComposer(); }, [focusComposer, sideId]);
 
   useEffect(() => {
+    if (surface && surface !== 'chat') return undefined;
     let disposed = false;
     let pending = false;
     const poll = async () => {
@@ -184,7 +189,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
         if (disposed) return;
         setState(value);
         setConnectionError('');
-        if (!activeSide.current && value.sidechats?.length) {
+        if (!fixedSidechat && !activeSide.current && value.sidechats?.length) {
           setSideId(value.sidechats[0].id);
           setSideTitle(value.sidechats[0].title || '独立侧聊');
         }
@@ -194,7 +199,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
     poll();
     const timer = setInterval(poll, POLL_MS);
     return () => { disposed = true; clearInterval(timer); };
-  }, [call]);
+  }, [call, surface, fixedSidechat?.id]);
 
   useEffect(() => {
     setConversation(null);
@@ -204,7 +209,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
     setShowRuntimeContext(false);
     setExpandedMessages(new Set());
     followMessages.current = true;
-    if (!sideId) return undefined;
+    if (!sideId || (surface && surface !== 'chat')) return undefined;
     let disposed = false;
     let pending = false;
     const poll = async () => {
@@ -222,16 +227,21 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
     poll();
     const timer = setInterval(poll, POLL_MS);
     return () => { disposed = true; clearInterval(timer); };
-  }, [call, sideId]);
+  }, [call, sideId, surface]);
 
   useEffect(() => {
     if (followMessages.current && messageScroll.current) messageScroll.current.scrollTop = messageScroll.current.scrollHeight;
   }, [conversation?.messages]);
 
-  const addPacket = (packet) => {
-    setPackets((current) => [...current, { ...packet, _id: nextPacketId.current++ }]);
+  const addPacket = async (packet) => {
+    if (onPacket) {
+      try { await onPacket(packet); return true; }
+      catch (error) { fail(error); return false; }
+    }
+    setPackets((current) => [...current, { ...packet, _id: createPacketId ? createPacketId() : nextPacketId.current++ }]);
     setPacketsOpen(true);
     notify('已加入上下文包，可在发送前审阅或移除。');
+    return true;
   };
 
   const createSidechat = useCallback(async () => {
@@ -316,7 +326,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
     } catch (error) { if (error !== STALE && directoryRequest.current === request) setDirectoryError(errorText(error)); }
     finally { if (alive.current && directoryRequest.current === request) setDirectoryLoading(false); }
   }, [call]);
-  useEffect(() => { loadDirectory('.'); }, [loadDirectory]);
+  useEffect(() => { if (!surface || surface === 'files') loadDirectory('.'); }, [loadDirectory, surface]);
 
   const openFile = async (path) => {
     if (!path.trim()) return;
@@ -353,7 +363,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
   const followTerminal = useRef(true);
 
   useEffect(() => {
-    if (!terminalId) return undefined;
+    if (!terminalId || (surface && surface !== 'terminal')) return undefined;
     let disposed = false;
     let pending = false;
     let complete = false;
@@ -382,7 +392,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
     poll();
     const timer = setInterval(poll, POLL_MS);
     return () => { disposed = true; clearInterval(timer); };
-  }, [call, mainSessionId, terminalId]);
+  }, [call, mainSessionId, terminalId, surface]);
   useEffect(() => {
     if (followTerminal.current && terminalScroll.current) terminalScroll.current.scrollTop = terminalScroll.current.scrollHeight;
   }, [terminal?.output]);
@@ -423,13 +433,16 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
       setQuoteUrl(url);
       setBrowserVersion((value) => value + 1);
       setBrowserError('');
+      const address = new URL(url);
+      const page = address.pathname.replace(/\/$/, '').split('/').pop();
+      onTitle?.(`${page ? `${page} · ` : ''}${address.hostname}`.slice(0, 80) || '网页');
     } catch { setBrowserError('请输入完整的 HTTP(S) 地址，例如 http://localhost:3000。'); }
   };
-  const addWebQuote = () => {
+  const addWebQuote = async () => {
     if (!quoteText.trim()) return;
     try {
       const url = httpUrl(quoteUrl);
-      addPacket({ kind: 'web', source: url, url, text: quoteText.trim() });
+      if (!await addPacket({ kind: 'web', source: url, url, text: quoteText.trim() })) return;
       setQuoteText('');
       setBrowserError('');
     } catch { setBrowserError('请为引用片段填写有效的 HTTP(S) 来源地址。'); }
@@ -480,14 +493,14 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
   const sortedEntries = [...(directory.entries || [])].sort((a, b) => (a.type === 'directory' ? 0 : 1) - (b.type === 'directory' ? 0 : 1) || a.name.localeCompare(b.name));
   const tabId = useId();
 
-  return <aside className={`dsh-sidecar${isDragging ? ' is-resizing' : ''}`} aria-label="Sidecar 右栏">
-    <PanelHeading onClose={onClose}/>
-    <div className="dsh-sc-main-context"><span className={`dsh-sc-status-dot${state?.main?.running ? ' is-running' : ''}`}/><span className="dsh-sc-eyebrow">主任务</span><strong title={mainTitle}>{mainTitle}</strong><span className="dsh-sc-status-label">{connectionError ? '连接异常' : !state ? '连接中' : state.main?.running ? '运行中' : '就绪'}</span></div>
+  return <aside className={`dsh-sidecar${surface ? ' dsh-sc-surface' : ''}${isDragging ? ' is-resizing' : ''}`} aria-label={surface ? ({files:'文件内容页',terminal:'终端内容页',browser:'网页内容页',chat:'侧聊内容页'})[surface] : 'Sidecar 右栏'}>
+    {!surface && <PanelHeading onClose={onClose}/>}
+    {!surface && <div className="dsh-sc-main-context"><span className={`dsh-sc-status-dot${state?.main?.running ? ' is-running' : ''}`}/><span className="dsh-sc-eyebrow">主任务</span><strong title={mainTitle}>{mainTitle}</strong><span className="dsh-sc-status-label">{connectionError ? '连接异常' : !state ? '连接中' : state.main?.running ? '运行中' : '就绪'}</span></div>}
     {connectionError && <div className="dsh-sc-inline-error" role="status">{connectionError}<small>正在自动重试连接。</small></div>}
     {notice && <div className={`dsh-sc-notice is-${notice.type}`} role={notice.type === 'error' ? 'alert' : 'status'}><Icon name={notice.type === 'error' ? 'close' : 'check'}/><span>{notice.text}</span><button className="dsh-sc-icon-button" aria-label="关闭提示" onClick={() => setNotice(null)}><Icon name="close" size={13}/></button></div>}
     <div className="dsh-sc-split-root" ref={splitRoot}>
-      <section className="dsh-sc-workbench" style={{ flexBasis: `${split}%` }} aria-label="工作台">
-        <div className="dsh-sc-tabs" role="tablist" aria-label="工作台工具">{[['files', 'files', '文件'], ['terminal', 'terminal', '终端'], ['browser', 'browser', '浏览器']].map(([key, icon, label], index, all) => <button key={key} id={`${tabId}-tab-${key}`} role="tab" aria-selected={tab === key} aria-controls={`${tabId}-panel-${key}`} tabIndex={tab === key ? 0 : -1} onClick={() => setTab(key)} onKeyDown={(event) => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const next = all[(index + (event.key === 'ArrowRight' ? 1 : all.length - 1)) % all.length][0]; setTab(next); event.currentTarget.parentElement.querySelector(`[id="${tabId}-tab-${next}"]`)?.focus(); } }}><Icon name={icon}/>{label}{key === 'terminal' && terminal?.running && <span className="dsh-sc-live-dot"/>}</button>)}<span className="dsh-sc-workbench-label">WORKSPACE</span></div>
+      <section className="dsh-sc-workbench" hidden={surface === 'chat'} style={surface ? { flex: '1 1 0%' } : { flexBasis: `${split}%` }} aria-label="工作台">
+        <div className="dsh-sc-tabs" hidden={Boolean(surface)} role="tablist" aria-label="工作台工具">{[['files', 'files', '文件'], ['terminal', 'terminal', '终端'], ['browser', 'browser', '浏览器']].map(([key, icon, label], index, all) => <button key={key} id={`${tabId}-tab-${key}`} role="tab" aria-selected={tab === key} aria-controls={`${tabId}-panel-${key}`} tabIndex={tab === key ? 0 : -1} onClick={() => setTab(key)} onKeyDown={(event) => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const next = all[(index + (event.key === 'ArrowRight' ? 1 : all.length - 1)) % all.length][0]; setTab(next); event.currentTarget.parentElement.querySelector(`[id="${tabId}-tab-${next}"]`)?.focus(); } }}><Icon name={icon}/>{label}{key === 'terminal' && terminal?.running && <span className="dsh-sc-live-dot"/>}</button>)}<span className="dsh-sc-workbench-label">WORKSPACE</span></div>
         <div role="tabpanel" id={`${tabId}-panel-files`} aria-labelledby={`${tabId}-tab-files`} hidden={tab !== 'files'} className="dsh-sc-tool dsh-sc-file-tool">
           <form className="dsh-sc-address" onSubmit={(event) => { event.preventDefault(); openFile(pathInput); }}><button type="button" className={`dsh-sc-icon-button${fileListOpen ? ' is-active' : ''}`} title="浏览文件目录" aria-label="浏览文件目录" aria-pressed={fileListOpen} onClick={() => setFileListOpen((value) => !value)}><Icon name="files"/></button><input aria-label="文件路径" value={pathInput} onChange={(event) => setPathInput(event.target.value)} placeholder="输入工作区内的文件路径" spellCheck={false}/><button type="submit" className="dsh-sc-icon-button" aria-label="读取文件" title="读取文件" disabled={!pathInput.trim() || fileLoading}><Icon name={fileLoading ? 'refresh' : 'arrow'} className={fileLoading ? 'is-spinning' : ''}/></button></form>
           {fileListOpen && <div className="dsh-sc-directory"><div className="dsh-sc-directory-heading"><button className="dsh-sc-icon-button" aria-label="上一级目录" disabled={directory.path === '.' || directory.path === '' || directoryLoading} onClick={() => { const normalized = directory.path.replace(/\\/g, '/').replace(/\/$/, ''); loadDirectory(normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) || '.' : '.'); }}><Icon name="up" size={13}/></button><span title={directory.path}>{directory.path || '.'}</span><button className="dsh-sc-icon-button" aria-label="刷新文件目录" disabled={directoryLoading} onClick={() => loadDirectory(directory.path || '.')}><Icon name="refresh" size={13} className={directoryLoading ? 'is-spinning' : ''}/></button></div>{directoryError ? <div className="dsh-sc-inline-error" role="alert">{directoryError}</div> : <div className="dsh-sc-file-list">{sortedEntries.map((entry) => <button key={entry.path} className={`dsh-sc-file-entry${file?.path === entry.path ? ' is-current' : ''}`} onClick={() => entry.type === 'directory' ? loadDirectory(entry.path) : openFile(entry.path)} title={entry.path}><Icon name={entry.type === 'directory' ? 'files' : 'file'} size={14}/><span>{entry.name}</span><small>{entry.type === 'directory' ? <Icon name="chevron" size={12}/> : byteLabel(entry.size)}</small></button>)}{!sortedEntries.length && <p className="dsh-sc-help">{directoryLoading ? '读取目录…' : '这个目录中还没有文件。'}</p>}</div>}</div>}
@@ -507,10 +520,10 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
           <details className="dsh-sc-web-quote"><summary><Icon name="link" size={13}/><span>引用网页片段</span><span className="dsh-sc-muted">手动提供</span></summary><div><input aria-label="网页引用来源地址" value={quoteUrl} onChange={(event) => setQuoteUrl(event.target.value)} placeholder="来源 URL（HTTP / HTTPS）" spellCheck={false}/><textarea aria-label="网页引用片段" rows={3} value={quoteText} onChange={(event) => setQuoteText(event.target.value)} placeholder="粘贴需要引用的文字。右栏不会自动读取网页内容。"/><button className="dsh-sc-small-button" disabled={!quoteText.trim() || !quoteUrl.trim()} onClick={addWebQuote}><Icon name="plus" size={12}/>加入上下文包</button></div></details>
         </div>
       </section>
-      <div className="dsh-sc-splitter" role="separator" aria-label="调整工作台与侧聊高度" aria-orientation="horizontal" aria-valuemin={25} aria-valuemax={73} aria-valuenow={Math.round(split)} tabIndex={0} onKeyDown={(event) => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); setSplit((value) => Math.max(25, Math.min(73, value + (event.key === 'ArrowDown' ? 3 : -3)))); } }} onPointerDown={(event) => { dragging.current = true; setIsDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (dragging.current) changeSplit(event.clientY); }} onPointerUp={() => { dragging.current = false; setIsDragging(false); }} onPointerCancel={() => { dragging.current = false; setIsDragging(false); }}><span/></div>
-      <section className="dsh-sc-sidechat" aria-label="独立侧聊">
-        <div className="dsh-sc-chat-heading"><div><Icon name="chat"/><strong>Sidechat</strong><span className="dsh-sc-tag">独立会话</span></div><button className="dsh-sc-small-button" onClick={createSidechat} disabled={creating} aria-label="新建侧聊"><Icon name="plus" size={13}/>{creating ? '创建中' : '新建'}</button></div>
-        <div className="dsh-sc-chat-session"><select aria-label="选择侧聊会话" value={sideId} onChange={(event) => { setSideId(event.target.value); setSideTitle(sidechats.find((item) => item.id === event.target.value)?.title || '独立侧聊'); }} disabled={!sidechats.length && !sideId}><option value="" disabled>创建或选择独立侧聊</option>{sidechats.map((item) => <option value={item.id} key={item.id}>{item.title || '独立侧聊'}{item.running ? ' · 运行中' : ''}</option>)}{selectedMissing && <option value={sideId}>{sideTitle || '独立侧聊'}</option>}</select><label className="dsh-sc-context-option" title="仅影响下一次新建侧聊；由服务端复制主任务上下文。"><input type="checkbox" checked={includeContext} onChange={(event) => setIncludeContext(event.target.checked)}/>新建时带入主任务上下文</label></div>
+      <div className="dsh-sc-splitter" hidden={Boolean(surface)} role="separator" aria-label="调整工作台与侧聊高度" aria-orientation="horizontal" aria-valuemin={25} aria-valuemax={73} aria-valuenow={Math.round(split)} tabIndex={0} onKeyDown={(event) => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); setSplit((value) => Math.max(25, Math.min(73, value + (event.key === 'ArrowDown' ? 3 : -3)))); } }} onPointerDown={(event) => { dragging.current = true; setIsDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (dragging.current) changeSplit(event.clientY); }} onPointerUp={() => { dragging.current = false; setIsDragging(false); }} onPointerCancel={() => { dragging.current = false; setIsDragging(false); }}><span/></div>
+      <section className="dsh-sc-sidechat" hidden={Boolean(surface && surface !== 'chat')} aria-label="独立侧聊">
+        <div className="dsh-sc-chat-heading"><div><Icon name="chat"/><strong>{fixedSidechat ? sideTitle || '独立侧聊' : 'Sidechat'}</strong><span className="dsh-sc-tag">独立会话</span></div><button hidden={Boolean(fixedSidechat)} className="dsh-sc-small-button" onClick={createSidechat} disabled={creating} aria-label="新建侧聊"><Icon name="plus" size={13}/>{creating ? '创建中' : '新建'}</button></div>
+        <div className="dsh-sc-chat-session" hidden={Boolean(fixedSidechat)}><select aria-label="选择侧聊会话" value={sideId} onChange={(event) => { setSideId(event.target.value); setSideTitle(sidechats.find((item) => item.id === event.target.value)?.title || '独立侧聊'); }} disabled={!sidechats.length && !sideId}><option value="" disabled>创建或选择独立侧聊</option>{sidechats.map((item) => <option value={item.id} key={item.id}>{item.title || '独立侧聊'}{item.running ? ' · 运行中' : ''}</option>)}{selectedMissing && <option value={sideId}>{sideTitle || '独立侧聊'}</option>}</select><label className="dsh-sc-context-option" title="仅影响下一次新建侧聊；由服务端复制主任务上下文。"><input type="checkbox" checked={includeContext} onChange={(event) => setIncludeContext(event.target.checked)}/>新建时带入主任务上下文</label></div>
         {conversationError && <div className="dsh-sc-inline-error" role="alert">{conversationError}</div>}
         {runtimeContextCount > 0 && <button className="dsh-sc-runtime-toggle" aria-expanded={showRuntimeContext} onClick={() => setShowRuntimeContext((value) => !value)}><Icon name="chevron" size={12} className={showRuntimeContext ? 'is-rotated' : ''}/>{showRuntimeContext ? '隐藏' : '显示'} {runtimeContextCount} 条运行上下文</button>}
         {selectedMessages.length > 0 && <div className="dsh-sc-selection-bar"><span>已选 {selectedMessages.length} 条消息</span><button className="dsh-sc-text-button" onClick={() => setSelected(new Set())}>清除</button><button className="dsh-sc-small-button is-accent" onClick={() => prepareReturn(selectedMessages)}><Icon name="up" size={12}/>送回主任务</button></div>}
