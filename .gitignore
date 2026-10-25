@@ -3,6 +3,7 @@ lib/
 .local/
 *.tgz
 coverage/
+*.log
 .env
 .env.*
 !.env.example

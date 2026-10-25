@@ -5,6 +5,7 @@ import { createServer } from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readSidecarInstallation } from './install.mjs';
+import { createLaunchUrlCapture, findDesktopLauncher, saveDesktopRuntimeState } from './desktop-launch-state.mjs';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const supportedDshVersion = '0.1.2-rc.1';
@@ -103,21 +104,35 @@ export async function start(args = process.argv.slice(2)) {
   }
   command.push('--host', '127.0.0.1', '--port', String(options.port));
   if (!options.open) command.push('--no-open');
+  const desktopLauncher = await findDesktopLauncher({ node: process.execPath, cli: runtime.cli, home, host: '127.0.0.1', port: options.port });
+  const startedAt = new Date().toISOString();
   console.log(`DSH Sidecar: http://127.0.0.1:${options.port}\nWorkspace: ${options.workspace}\nUsing DSH ${runtime.version}; plugin source: ${pluginMode}.`);
   const child = spawn(process.execPath, command, {
-    cwd: options.workspace, stdio: 'inherit', windowsHide: true,
+    cwd: options.workspace, stdio: desktopLauncher ? ['inherit', 'pipe', 'inherit'] : 'inherit', windowsHide: true,
     env: { ...process.env, DSH_HOME: home, DSH_PERMISSION_MODE: process.env.DSH_PERMISSION_MODE || 'workspace-write' },
   });
-  await writeFile(join(stateRoot, `process-${options.port}.json`), JSON.stringify({ pid: child.pid, startedAt: new Date().toISOString(), url: `http://127.0.0.1:${options.port}`, workspace: options.workspace }, null, 2));
+  let desktopStateWrite = Promise.resolve();
+  const capture = desktopLauncher && createLaunchUrlCapture(desktopLauncher.run, launchUrl => {
+    desktopStateWrite = saveDesktopRuntimeState(desktopLauncher, { pid: child.pid, startedAt, launchUrl }).catch(() => {
+      console.warn('Could not update desktop launcher state. The DSH service is still running.');
+    });
+  });
+  if (capture) child.stdout.on('data', chunk => { process.stdout.write(chunk); capture.write(chunk); });
+  // A descendant can inherit stdout. Wait for this child, never for pipe EOF.
+  const childExited = new Promise((done, fail) => {
+    child.once('error', fail);
+    child.once('exit', code => { process.exitCode = code ?? 0; capture?.finish(); child.stdout?.unref?.(); done(); });
+  });
+  childExited.catch(() => {});
+  await writeFile(join(stateRoot, `process-${options.port}.json`), JSON.stringify({ pid: child.pid, startedAt, url: `http://127.0.0.1:${options.port}`, workspace: options.workspace }, null, 2));
   const stop = () => child.kill('SIGTERM');
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
-  await new Promise((done, fail) => {
-    child.once('error', fail);
-    child.once('exit', (code) => { process.exitCode = code ?? 0; done(); });
-  });
-  process.off('SIGINT', stop);
-  process.off('SIGTERM', stop);
+  try { await childExited; await desktopStateWrite; }
+  finally {
+    process.off('SIGINT', stop);
+    process.off('SIGTERM', stop);
+  }
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

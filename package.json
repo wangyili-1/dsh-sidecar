@@ -1,7 +1,13 @@
 {
   "name": "dsh-sidecar",
-  "version": "0.4.0",
-  "description": "Independent side conversations and a file, command and browser workbench for DeepSeek Harness.",
+  "version": "0.4.1",
+  "description": "Resizable browser tabs, independent side conversations and split panes for DeepSeek Harness.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wangyili-1/dsh-sidecar.git"
+  },
+  "homepage": "https://github.com/wangyili-1/dsh-sidecar#readme",
+  "bugs": "https://github.com/wangyili-1/dsh-sidecar/issues",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -19,6 +25,7 @@
     "scripts",
     "tests",
     "README.md",
+    "CHANGELOG.md",
     "VALIDATION.md",
     "LICENSE",
     "docs",

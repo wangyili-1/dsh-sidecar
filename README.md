@@ -1,8 +1,13 @@
 # dsh-sidecar
 
+[![Tests](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml/badge.svg)](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 为 **DeepSeek Harness 0.1.2-rc.1** 增加网页标签、独立侧聊和上下分屏。主任务继续执行，你可以在旁边解释报错、引用文件、核对反例，再选择将结论送回主任务。
 
-这是原生 DSH 前后端插件：通过现有的身份认证连接和 Session Controller 工作，不另存 API Key，不替换 DSH 的模型运行器。**v0.4.0** 支持拖宽侧栏、完整缩放网页、按首问自动命名及持久关闭侧聊。安装到现有 DSH Web 配置后，仍从原来的桌面快捷方式进入。当前针对固定版本适配，尚不支持将插件直接放入任意新版 DSH。
+这是原生 DSH 前后端插件：通过现有的身份认证连接和 Session Controller 工作，不另存模型 API Key，不替换 DSH 的模型运行器。首个公开版本 **v0.4.1** 支持拖宽侧栏、完整缩放网页、按首问自动命名及持久关闭侧聊。安装到现有 DSH Web 配置后，仍从原来的桌面快捷方式进入。当前针对固定版本适配，尚不支持将插件直接放入任意新版 DSH。
+
+[下载发布版](https://github.com/wangyili-1/dsh-sidecar/releases/latest) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/wangyili-1/dsh-sidecar/issues)
 
 ![拖宽侧栏并完整显示百度网页](docs/resizable-browser.jpg)
 
@@ -54,16 +59,20 @@
 
 ## 安装到现有 DSH
 
-需要 Node.js 22 或更高版本，以及已配置好模型的 DSH **0.1.2-rc.1**。先进入本项目目录：
+需要 Git、Node.js 22 或更高版本，以及已配置好模型的 DSH **0.1.2-rc.1**。在准备长期保留插件的位置执行：
 
 ```powershell
-npm install
+git clone https://github.com/wangyili-1/dsh-sidecar.git
+cd dsh-sidecar
+npm ci
 npm run build
 npm run doctor
 npm run install:dsh -- --workspace "C:\path\to\your-project"
 ```
 
-然后重新打开原来的 **DeepSeek Harness** 桌面快捷方式。首页右上角保留两个入口：
+将示例路径改为你的工作区路径。也可以下载 Release 的源码 ZIP，解压后从 `npm ci` 开始；构建包 `.tgz` 已含 `lib/`，解压后运行 `npm install --omit=dev`，再执行诊断和安装命令。
+
+若 DSH 服务已运行，先保存草稿、停止任务并退出该服务，再用原启动方式启动；只关闭浏览器窗口可能不会停止后台服务。然后重新打开原来的 **DeepSeek Harness** 桌面快捷方式。首页右上角保留两个入口：
 
 | 按钮 | 操作 |
 | --- | --- |
@@ -112,6 +121,8 @@ npm start -- --dsh-cli "PATH/TO/@deepseek-ai/dsh/lib/bin.js" --workspace "PATH/T
 ```
 
 `DSH_SIDECAR_CLI` 也可指定同一路径。`--port 4092` 可更换端口；端口占用时启动器会报错，不会终止其他进程。保留终端运行，按 Ctrl+C 停止本实例。
+
+Windows 下，如果通过本脚本启动的是桌面安装配置中同一套 Node、DSH、用户目录及地址端口，启动器会同步本次服务的本机登录状态，避免桌面快捷方式继续使用上次服务的过期链接。该状态只保存在本机安装目录；默认 3082 调试实例不会覆盖 3080 桌面实例。
 
 ## 引用与持久化
 
