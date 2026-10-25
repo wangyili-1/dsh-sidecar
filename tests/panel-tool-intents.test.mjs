@@ -169,7 +169,6 @@ test('unmount before the intent microtask cancels the mutation', async () => {
   assert(!h.calls.some(({ endpoint }) => endpoint === 'sidechat/create'));
 });
 
-const buttonText = text => node => node.type === 'button' && node.props?.children?.includes?.(text);
 const formFor = label => node => node.type === 'form' && node.props?.children?.some?.(child => child?.props?.['aria-label'] === label);
 const enter = (h, label, value) => h.find(byLabel(label)).props.onChange({ target: { value } });
 
@@ -187,7 +186,7 @@ test('a fixed chat surface loads, sends and cancels only its assigned session', 
   await h.flush();
   await h.find(byLabel('发送到侧聊')).props.onClick();
   await h.flush();
-  await h.find(buttonText('停止侧聊')).props.onClick();
+  await h.find(byLabel('停止侧聊')).props.onClick();
   await h.flush();
   const mutations = h.calls.filter(({ endpoint }) => endpoint === 'conversation/send' || endpoint === 'conversation/cancel');
   assert.equal(mutations.length, 2);
@@ -239,7 +238,7 @@ test('browser-only surfaces keep their own URL and quote state without polling c
   assert.equal(second.find(node => node.type === 'iframe').props.src, 'http://localhost:4400/preview');
   assert.equal(first.find(byLabel('网页引用片段')).props.value, 'first quote');
   assert.equal(second.find(byLabel('网页引用片段')).props.value, 'second quote');
-  await first.find(buttonText('加入上下文包')).props.onClick();
+  await first.find(byLabel('加入上下文包')).props.onClick();
   await first.flush(); await second.flush();
   assert.equal(firstPackets.length, 1);
   assert.equal(firstPackets[0].text, 'first quote');
@@ -281,7 +280,7 @@ test('controlled context packets and external web delivery update only their cho
     onPacketsChange(current => [...current, { ...packet, _id: `a-web-${++nextId}` }]);
   } } });
   await first.flush(); await second.flush(); await browser.flush();
-  await first.find(buttonText('引用')).props.onClick();
+  await first.find(byLabel('引用消息')).props.onClick();
   await first.flush();
   assert.equal(firstPackets.length, 2);
   assert.equal(firstPackets[1]._id, 'a-added-1');
@@ -293,7 +292,7 @@ test('controlled context packets and external web delivery update only their cho
   enter(browser, '网页引用来源地址', 'https://context.example/');
   enter(browser, '网页引用片段', 'Added while chat A is sending');
   await browser.flush();
-  await browser.find(buttonText('加入上下文包')).props.onClick();
+  await browser.find(byLabel('加入上下文包')).props.onClick();
   await browser.flush(); await first.flush();
   assert.equal(firstPackets.length, 3);
   resolveSend({ accepted: true });

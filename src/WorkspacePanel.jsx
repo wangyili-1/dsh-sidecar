@@ -285,15 +285,15 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
       {group === 'top' && <button type="button" className="dsh-ws-icon-button" aria-label={split ? '合并上下分屏' : '上下分屏'} title={split ? '合并为一个标签组' : '将当前标签移到下方'} disabled={!split && openTabIds(workspace).length < 2} onClick={() => split ? dispatch({ type: 'merge' }) : splitActive(group)}><Icon kind={split ? 'merge' : 'split'}/></button>}
       {menu === group && <div className="dsh-ws-menu" role="menu" aria-label="添加标签">
         <button type="button" role="menuitem" onClick={() => openTool('browser', group, true)}><Icon kind="browser"/>新建网页</button>
-        <button type="button" role="menuitem" disabled={creating} onClick={() => { setMenu(null); void newChat(group); }}><Icon kind="chat"/>{creating ? '正在创建侧聊…' : '新建侧聊'}</button>
-        <button type="button" role="menuitem" aria-label="新建侧聊（带主任务上下文）" disabled={creating} onClick={() => { setMenu(null); void newChat(group, true); }}><Icon kind="chat"/>带上下文新建侧聊</button>
+        <button type="button" role="menuitem" disabled={creating} onClick={() => { setMenu(null); void newChat(group); }}><Icon kind="chat"/>{creating ? '创建中…' : '新建侧聊'}</button>
+        <button type="button" role="menuitem" aria-label="新建侧聊（带主任务上下文）" disabled={creating} onClick={() => { setMenu(null); void newChat(group, true); }}><Icon kind="chat"/>新建上下文侧聊</button>
         <button type="button" role="menuitem" onClick={() => openTool('files', group)}><Icon kind="files"/>文件</button>
         <button type="button" role="menuitem" onClick={() => openTool('terminal', group)}><Icon kind="terminal"/>终端</button>
         {(remote?.sidechats?.length > 0) && <><div className="dsh-ws-menu-label">继续侧聊</div>{remote.sidechats.map(side => <button key={side.id} type="button" role="menuitem" onClick={() => openChat(side, group)}><Icon kind="chat"/><span>{side.title || '侧聊'}</span></button>)}</>}
-        {workspace.tabs.some(tab => !groupForTab(workspace, tab.id)) && <><div className="dsh-ws-menu-label">恢复关闭的标签</div>{workspace.tabs.filter(tab => !groupForTab(workspace, tab.id)).slice(-5).reverse().map(tab => <button key={tab.id} type="button" role="menuitem" aria-label={`恢复标签 ${tab.title}`} onClick={() => open(tab, group)}><Icon kind={tab.kind}/><span>{tab.title}</span></button>)}</>}
+        {workspace.tabs.some(tab => !groupForTab(workspace, tab.id)) && <><div className="dsh-ws-menu-label">已关闭</div>{workspace.tabs.filter(tab => !groupForTab(workspace, tab.id)).slice(-5).reverse().map(tab => <button key={tab.id} type="button" role="menuitem" aria-label={`恢复标签 ${tab.title}`} onClick={() => open(tab, group)}><Icon kind={tab.kind}/><span>{tab.title}</span></button>)}</>}
         <div className="dsh-ws-menu-label">布局</div>
-        <button type="button" role="menuitem" disabled={!workspace.active[group] || openTabIds(workspace).length < 2} onClick={() => splitActive(group)}><Icon kind="split"/>{group === 'top' ? '当前标签移到下方' : '当前标签移到上方'}</button>
-        {split && <button type="button" role="menuitem" onClick={() => { dispatch({ type: 'merge' }); setMenu(null); }}><Icon kind="merge"/>合并上下分屏</button>}
+        <button type="button" role="menuitem" disabled={!workspace.active[group] || openTabIds(workspace).length < 2} onClick={() => splitActive(group)}><Icon kind="split"/>{group === 'top' ? '移到下方' : '移到上方'}</button>
+        {split && <button type="button" role="menuitem" onClick={() => { dispatch({ type: 'merge' }); setMenu(null); }}><Icon kind="merge"/>合并分屏</button>}
       </div>}
     </div>
   </div>;
@@ -313,11 +313,10 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
           <Surface api={api} mainSessionId={mainSessionId} surface={tab.kind} fixedSidechat={tab.kind === 'chat' ? { id: tab.sessionId, title: tab.title } : undefined} onPacket={tab.kind === 'chat' ? undefined : sendPacket} packets={tab.kind === 'chat' ? packetLists[tab.id] || [] : undefined} onPacketsChange={tab.kind === 'chat' ? updater => updatePackets(tab.id, updater) : undefined} createPacketId={createPacketId} onTitle={title => titleChanged(tab.id, title)}/>
         </div>;
       })}
-      {!workspace.groups.top.length && <div className="dsh-ws-empty" style={{ gridRow: 2, gridColumn: 1 }}><Icon kind="plus" size={24}/><strong>打开网页或侧聊</strong><p>点击上方 ＋ 添加标签。将标签拖到下方，可以同时查看两个页面。</p><button type="button" className="dsh-sc-small-button" onClick={() => setMenu('top')}>添加标签</button></div>}
+      {!workspace.groups.top.length && <div className="dsh-ws-empty" style={{ gridRow: 2, gridColumn: 1 }}><button type="button" className="dsh-sc-small-button" onClick={() => setMenu('top')}><Icon kind="plus"/>添加标签</button></div>}
       {drag?.target?.zone === 'pane' && <div className={`dsh-ws-drop-preview is-${drag.target.to}`} aria-hidden="true"><span>{drag.target.to === 'bottom' ? '放到下方分屏' : split ? '移到上方分屏' : '放到顶部标签组'}</span></div>}
     </div>
     {(error || notice) && <div className={`dsh-ws-notice${error ? ' is-error' : ''}`} role="status"><span>{error || notice}</span><button type="button" aria-label="关闭提示" onClick={() => { setError(''); setNotice(''); }}><Icon kind="close" size={12}/></button></div>}
-    <div className="dsh-ws-main-context"><span className="dsh-sc-status-dot"/><span title={remote?.main?.title}>{remote?.main?.title || '主会话'}</span><small>标签可拖动排序、上下分屏</small></div>
     <span className="dsh-ws-screen-reader" aria-live="polite">{drag ? '拖动标签：放入标签栏可排序，放到下方可分屏。' : ''}</span>
   </aside>;
 }

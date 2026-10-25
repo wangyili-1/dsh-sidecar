@@ -5,10 +5,10 @@ import './toolbar.css';
 
 export const inject = ['slots', 'layout', 'connection', 'sessions', 'workspaces', 'uiWorkspace'];
 const TOOLS = [
-  { id: 'files', label: '文件', description: '浏览项目文件与反例报告' },
-  { id: 'terminal', label: '终端', description: '运行命令并查看输出' },
-  { id: 'browser', label: '网页', description: '打开网页并摘录内容' },
-  { id: 'chat', label: '侧聊', description: '继续独立侧聊' },
+  { id: 'files', label: '文件' },
+  { id: 'terminal', label: '终端' },
+  { id: 'browser', label: '网页' },
+  { id: 'chat', label: '侧聊' },
 ];
 function ToolbarIcon({ name }) {
   const paths = {
@@ -48,14 +48,14 @@ function Toolbar({ state, onToggle, onTool }) {
       if (event.key === 'ArrowDown') { event.preventDefault(); setMenu(true); queueMicrotask(() => focusItem(0)); }
     }}><ToolbarIcon name="more"/></button>
     <button className="dsh-sc-toolbar-button" type="button" aria-label={state.visible ? '关闭 Sidecar 侧栏' : '打开 Sidecar 侧栏'} title={state.visible ? '关闭侧栏' : '打开侧栏'} aria-pressed={state.visible} onClick={() => { setMenu(false); void onToggle(); }}><ToolbarIcon name="controls"/></button>
-    <span className="dsh-sc-toolbar-separator" aria-hidden="true"/>
-    <button className="dsh-sc-toolbar-button" type="button" aria-label="新建 Sidecar 侧聊" title="新建侧聊" disabled={state.busy} onClick={() => choose('chat', 'new-sidechat')}><ToolbarIcon name="new"/></button>
+    {!state.visible && <span className="dsh-sc-toolbar-separator" aria-hidden="true"/>}
+    {!state.visible && <button className="dsh-sc-toolbar-button" type="button" aria-label="新建 Sidecar 侧聊" title="新建侧聊" disabled={state.busy} onClick={() => choose('chat', 'new-sidechat')}><ToolbarIcon name="new"/></button>}
     {menu && <div className="dsh-sc-toolbar-menu" role="menu" aria-label="Sidecar 功能" onKeyDown={event => {
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
       event.preventDefault();
       const items = Array.from(root.current.querySelectorAll('[role="menuitem"]'));
       focusItem(items.indexOf(event.target) + (event.key === 'ArrowDown' ? 1 : -1));
-    }}>{TOOLS.map(tool => <button key={tool.id} type="button" role="menuitem" disabled={state.busy} onClick={() => choose(tool.id)}><ToolbarIcon name={tool.id}/><span>{tool.label}<small>{tool.description}</small></span></button>)}</div>}
+    }}>{TOOLS.map(tool => <button key={tool.id} type="button" role="menuitem" disabled={state.busy} onClick={() => choose(tool.id)}><ToolbarIcon name={tool.id}/><span>{tool.label}</span></button>)}</div>}
   </div>;
 }
 function HeaderToolbar({ useSidecarState, onToggle, onTool }) {
@@ -78,7 +78,7 @@ function Overlay({ api, useSidecarState, onToggle, onTool, onClose }) {
     {(state.visible || state.blank) && <div className="dsh-sc-floating-toolbar"><Toolbar state={state} onToggle={onToggle} onTool={onTool}/></div>}
     <div className="dsh-sc-global-panel" data-open={state.visible ? 'true' : 'false'} aria-hidden={!state.visible} inert={state.visible ? undefined : ''}>
       {state.error && <div className="dsh-sc-launcher-notice" role="status">{state.error}</div>}
-      {state.opened && (state.mainSessionId ? <Panel key={state.mainSessionId} api={api} mainSessionId={state.mainSessionId} toolIntent={state.toolIntent}/> : <aside className="dsh-sc-launcher-empty" aria-label="Sidecar 右栏"><header>Sidecar</header><strong>{state.busy ? '正在连接工作区…' : '先选择工作区'}</strong><p>{state.busy ? '会创建或复用一个空白主会话，无需发送消息。' : '在左侧添加或选择项目工作区，然后从右上角打开需要的功能。'}</p><button type="button" onClick={onClose}>关闭侧栏</button></aside>)}
+      {state.opened && (state.mainSessionId ? <Panel key={state.mainSessionId} api={api} mainSessionId={state.mainSessionId} toolIntent={state.toolIntent}/> : <aside className="dsh-sc-launcher-empty" aria-label="Sidecar 右栏"><strong>{state.busy ? '连接中…' : '选择工作区'}</strong></aside>)}
     </div>
   </div>;
 }
