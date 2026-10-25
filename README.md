@@ -1,17 +1,42 @@
-# dsh-sidecar
+# DSH Sidecar
+
+**简体中文** · [English](README.en.md)
 
 [![Tests](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml/badge.svg)](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-为 **DeepSeek Harness 0.1.2-rc.1** 增加网页标签、独立侧聊和上下分屏。主任务继续执行，你可以在旁边解释报错、引用文件、核对反例，再选择将结论送回主任务。
+**给 DeepSeek Harness 加上独立侧聊、网页标签和可拖动分屏。** 主任务继续执行，你可以在旁边解释报错、引用文件、核对反例，再选择将结论送回主任务。
 
-这是原生 DSH 前后端插件：通过现有的身份认证连接和 Session Controller 工作，不另存模型 API Key，不替换 DSH 的模型运行器。首个公开版本 **v0.4.1** 支持拖宽侧栏、完整缩放网页、按首问自动命名及持久关闭侧聊。安装到现有 DSH Web 配置后，仍从原来的桌面快捷方式进入。当前针对固定版本适配，尚不支持将插件直接放入任意新版 DSH。
+Native DeepSeek Harness plugin for independent side chats, browser tabs, and resizable split panes.
 
-[下载发布版](https://github.com/wangyili-1/dsh-sidecar/releases/latest) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/wangyili-1/dsh-sidecar/issues)
+适配 **DSH 0.1.2-rc.1** · **Node.js 22+** · **MIT** · 首个公开版本 **v0.4.1**。真实 DSH 界面验收在 Windows 完成；其他 DSH 版本尚未验证。
+
+[快速开始](#quick-start) · [功能](#功能) · [下载发布版](https://github.com/wangyili-1/dsh-sidecar/releases/latest) · [验证记录](VALIDATION.md) · [反馈问题](https://github.com/wangyili-1/dsh-sidecar/issues)
 
 ![拖宽侧栏并完整显示百度网页](docs/resizable-browser.jpg)
 
 侧栏展开时，主页面同步收窄并居中；收起后恢复原宽度。每个网页和侧聊有自己的标签，分屏后上、下两组可独立切换。此前首页布局效果见 [截图](docs/docked-home.jpg)，各项功能的测试范围见 [验证记录](VALIDATION.md)。
+
+这是独立实现的 DSH 原生前后端插件，通过现有认证连接和 Session Controller 工作，复用 DSH 的模型配置。安装到现有 Web profile 后，仍可从原来的桌面快捷方式进入。[更新记录](CHANGELOG.md)记录各版本变化。
+
+<a id="quick-start"></a>
+
+## 快速开始
+
+先准备 Git、Node.js 22+，以及已配置好模型的 **DeepSeek Harness 0.1.2-rc.1**。在准备长期保留插件的位置执行，并把最后一行的示例路径改为你的工作区：
+
+```powershell
+git clone https://github.com/wangyili-1/dsh-sidecar.git
+cd dsh-sidecar
+npm ci
+npm run build
+npm run doctor
+npm run install:dsh -- --workspace "C:\path\to\your-project"
+```
+
+保存 DSH 草稿、停止正在执行的任务后，**重启 DSH 服务**；只关闭浏览器窗口可能不会停止后台服务。重新打开 DSH，选择工作区，点击右上角 `···` → **网页 / 侧聊**。侧栏顶部 ＋ 新建标签，左边缘调整宽度，分屏按钮切换上下布局。
+
+插件按绝对路径加载，安装后请保留项目目录的位置。未自动找到 DSH、使用下载包或需要卸载时，见[详细安装说明](#安装到现有-dsh)。
 
 ## 功能
 
@@ -59,18 +84,14 @@
 
 ## 安装到现有 DSH
 
-需要 Git、Node.js 22 或更高版本，以及已配置好模型的 DSH **0.1.2-rc.1**。在准备长期保留插件的位置执行：
+首次安装按上方[快速开始](#quick-start)执行。也可以下载 Release 的源码 ZIP，解压后从 `npm ci` 开始；构建包 `.tgz` 已含 `lib/`，解压后运行 `npm install --omit=dev`，再执行诊断和安装命令。
+
+未自动找到 DSH 时，给诊断和安装命令指定同一个 CLI 路径：
 
 ```powershell
-git clone https://github.com/wangyili-1/dsh-sidecar.git
-cd dsh-sidecar
-npm ci
-npm run build
-npm run doctor
-npm run install:dsh -- --workspace "C:\path\to\your-project"
+npm run doctor -- --dsh-cli "PATH/TO/@deepseek-ai/dsh/lib/bin.js"
+npm run install:dsh -- --dsh-cli "PATH/TO/@deepseek-ai/dsh/lib/bin.js" --workspace "PATH/TO/your-project"
 ```
-
-将示例路径改为你的工作区路径。也可以下载 Release 的源码 ZIP，解压后从 `npm ci` 开始；构建包 `.tgz` 已含 `lib/`，解压后运行 `npm install --omit=dev`，再执行诊断和安装命令。
 
 若 DSH 服务已运行，先保存草稿、停止任务并退出该服务，再用原启动方式启动；只关闭浏览器窗口可能不会停止后台服务。然后重新打开原来的 **DeepSeek Harness** 桌面快捷方式。首页右上角保留两个入口：
 
