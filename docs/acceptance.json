@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "runId": "1792923354493-dd92e754",
+  "dshVersion": "0.1.2-rc.1",
+  "upstreamCommit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
+  "startedAt": "2026-10-25T10:15:54.493Z",
+  "finishedAt": "2026-10-25T10:16:38.269Z",
+  "status": "passed",
+  "checks": {
+    "distinctSessions": true,
+    "mainRunningAtSideReply": true,
+    "mainCompletedAfterSideReply": true,
+    "mainRunningBeforeSideCancel": true,
+    "mainRunningAfterSideCancel": true,
+    "sideStoppedAfterCancel": true,
+    "mainCompletedAfterSideCancel": true
+  },
+  "observations": [
+    {
+      "name": "main-first-running",
+      "at": "2026-10-25T10:15:55.999Z"
+    },
+    {
+      "name": "side-replied",
+      "at": "2026-10-25T10:15:58.755Z",
+      "mainRunning": true
+    },
+    {
+      "name": "before-side-cancel",
+      "at": "2026-10-25T10:16:18.168Z",
+      "mainRunning": true,
+      "sideRunning": true
+    },
+    {
+      "name": "after-side-cancel",
+      "at": "2026-10-25T10:16:18.197Z",
+      "mainRunning": true,
+      "sideRunning": false
+    }
+  ],
+  "publicOutputs": {
+    "side": "SIDE_DONE",
+    "mainFirst": "MAIN_DONE_A",
+    "mainSecond": "MAIN_DONE_A\nMAIN_DONE_B"
+  },
+  "note": "Real model calls through the installed DSH Session Controller. Session identities and event internals omitted. The main and side sessions were created only for this test."
+}
