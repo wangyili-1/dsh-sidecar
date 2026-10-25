@@ -14,6 +14,7 @@ function Icon({ name, size = 16, ...props }) {
     terminal: <><path d="m5 6 5 5-5 5M13 17h6"/></>,
     browser: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></>,
     chat: <path d="M4 4h16v12H9l-5 4z"/>,
+    panel: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></>,
     plus: <path d="M12 5v14M5 12h14"/>,
     close: <path d="m6 6 12 12M18 6 6 18"/>,
     arrow: <path d="m5 12 14 0m-5-5 5 5-5 5"/>,
@@ -98,7 +99,7 @@ export default function Panel({ api, mainSessionId, onClose }) {
 }
 
 function PanelHeading({ onClose }) {
-  return <header className="dsh-sc-heading"><div className="dsh-sc-brand"><span className="dsh-sc-brand-mark"><i/><i/><i/></span><span>Sidecar<small>工作台 · 独立侧聊</small></span></div>{onClose && <button className="dsh-sc-icon-button" aria-label="关闭 Sidecar" title="关闭右栏" onClick={onClose}><Icon name="close"/></button>}</header>;
+  return <header className="dsh-sc-heading"><div className="dsh-sc-brand"><Icon name="panel" size={16}/><span>Sidecar<small>工作台 · 独立侧聊</small></span></div>{onClose && <button className="dsh-sc-icon-button" aria-label="关闭 Sidecar" title="关闭右栏" onClick={onClose}><Icon name="close"/></button>}</header>;
 }
 
 function PanelSession({ api, mainSessionId, onClose }) {

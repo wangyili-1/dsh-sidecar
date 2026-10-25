@@ -13,9 +13,9 @@ function HeaderButton({ onToggle, useSidecarVisibility }) {
       title={active ? '返回工具详情' : '打开独立侧聊与工作面板'}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
-        border: '1px solid rgba(128, 160, 157, 0.4)', borderRadius: 8,
+        border: '1px solid var(--dsw-alias-border-l2, #ffffff1f)', borderRadius: 14,
         padding: '5px 10px', font: 'inherit', fontSize: 12, cursor: 'pointer',
-        color: 'inherit', background: active ? 'rgba(80, 170, 160, 0.18)' : 'transparent',
+        color: 'inherit', background: active ? 'var(--dsw-alias-interactive-bg-active, #ffffff24)' : 'transparent',
       }}
     >
       <span aria-hidden="true">◧</span> Sidecar
