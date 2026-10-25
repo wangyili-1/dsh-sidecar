@@ -1,0 +1,25 @@
+/* Compact, additive controls using DSH's native black/gray theme aliases. */
+.dsh-sc-shell-overlay { position: absolute; inset: 0; pointer-events: none !important; }
+.dsh-sc-floating-toolbar { position: absolute; top: 10px; right: 14px; z-index: 3; pointer-events: auto; }
+.dsh-sc-toolbar { position: relative; z-index: 10; display: inline-flex; align-items: center; gap: 3px; height: 32px; color: var(--dsw-alias-label-tertiary, #adb2b8); font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif); }
+.dsh-sc-toolbar .dsh-sc-toolbar-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
+.dsh-sc-toolbar button:hover:not(:disabled), .dsh-sc-toolbar button[aria-pressed='true'] { background: var(--dsw-alias-interactive-bg-hover, #ffffff14); color: var(--dsw-alias-label-primary, #f9fafb); }
+.dsh-sc-toolbar button:focus-visible, .dsh-sc-launcher-empty button:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary, #cfd3d6); outline-offset: 2px; }
+.dsh-sc-toolbar button:disabled { cursor: default; opacity: .4; }
+.dsh-sc-toolbar-separator { width: 1px; height: 18px; margin: 0 6px; background: var(--dsw-alias-border-l2, #ffffff1f); }
+.dsh-sc-toolbar-menu { position: absolute; right: 0; top: calc(100% + 7px); width: 238px; padding: 6px; border: 1px solid var(--dsw-alias-border-l2, #ffffff1f); border-radius: 12px; background: var(--dsw-alias-bg-layer-1, #232324); box-shadow: 0 12px 32px #0005; z-index: 5; }
+.dsh-sc-toolbar-menu > button { display: flex; align-items: center; gap: 11px; width: 100%; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary, #cfd3d6); text-align: left; padding: 10px; cursor: pointer; font: inherit; font-size: 12px; }
+.dsh-sc-toolbar-menu > button > svg { flex-shrink: 0; }
+.dsh-sc-toolbar-menu small { display: block; margin-top: 3px; color: var(--dsw-alias-label-caption, #81858c); font-size: 10px; line-height: 1.4; }
+.dsh-sc-global-panel { position: absolute; inset: 0 0 0 auto; display: flex; flex-direction: column; max-width: 100%; height: 100%; pointer-events: auto; background: var(--dsw-alias-bg-base, #151517); box-shadow: -8px 0 24px #0002; }
+.dsh-sc-global-panel[hidden] { display: none !important; }
+.dsh-sc-global-panel > .dsh-sidecar { flex: 1; height: auto; min-height: 0; }
+.dsh-sc-global-panel .dsh-sc-heading { min-height: 52px; padding-right: 142px; }
+.dsh-sc-global-panel .dsh-sc-brand small { display: none; }
+.dsh-sc-details-spacer { width: 100%; height: 100%; pointer-events: none; }
+.dsh-sc-launcher-notice { flex: 0 0 auto; padding: 58px 16px 12px; color: var(--dsw-alias-label-secondary, #cfd3d6); background: var(--dsw-alias-bg-layer-1, #232324); border-bottom: 1px solid var(--dsw-alias-border-l2, #ffffff1f); font: 12px/1.6 var(--dsw-font-family, 'Segoe UI', sans-serif); }
+.dsh-sc-launcher-empty { height: 100%; padding: 0 18px; border-left: 1px solid var(--dsw-alias-border-l2, #ffffff1f); color: var(--dsw-alias-label-secondary, #cfd3d6); font: 12px/1.6 var(--dsw-font-family, 'Segoe UI', sans-serif); }
+.dsh-sc-launcher-empty header { height: 52px; display: flex; align-items: center; padding-right: 125px; }
+.dsh-sc-launcher-empty strong { display: block; margin-top: 32px; color: var(--dsw-alias-label-primary, #f9fafb); }
+.dsh-sc-launcher-empty p { color: var(--dsw-alias-label-tertiary, #adb2b8); }
+.dsh-sc-launcher-empty button { padding: 6px 12px; border: 1px solid var(--dsw-alias-border-l2, #ffffff1f); border-radius: 7px; background: var(--dsw-alias-bg-layer-1, #232324); color: inherit; cursor: pointer; }

@@ -91,18 +91,18 @@ function PropertyLabSummary({ text }) {
   return <details className="dsh-sc-property" open><summary><span className="dsh-sc-eyebrow">PROPERTYLAB</span><span>文件中的结果</span></summary><div className="dsh-sc-property-body"><div className="dsh-sc-property-stats"><span>状态 <b>{report.statusText}</b></span><span>Evaluations <b>{report.evaluationsText}</b></span></div><span className="dsh-sc-small-label">最小反例</span><pre>{report.hasCounterexample === false ? '未确认反例（请结合运行状态）。' : report.hasCounterexampleValue ? report.counterexampleRaw : '文件未提供最小反例。'}</pre><details><summary>查看 evaluations</summary><pre>{report.evaluationsRaw}</pre><p>评估次数可能包含生成与收缩，不等于不同输入数。</p></details></div></details>;
 }
 
-export default function Panel({ api, mainSessionId, onClose }) {
+export default function Panel({ api, mainSessionId, onClose, toolIntent }) {
   if (!mainSessionId) {
     return <aside className="dsh-sidecar" aria-label="Sidecar 右栏"><PanelHeading onClose={onClose}/><EmptyState icon="chat" title="先选择一个主会话">在 DSH 中选择需要协作的主会话。文件、命令与侧聊会关联到该会话的工作区。</EmptyState></aside>;
   }
-  return <PanelSession key={String(mainSessionId)} api={api} mainSessionId={mainSessionId} onClose={onClose}/>;
+  return <PanelSession key={String(mainSessionId)} api={api} mainSessionId={mainSessionId} onClose={onClose} toolIntent={toolIntent}/>;
 }
 
 function PanelHeading({ onClose }) {
   return <header className="dsh-sc-heading"><div className="dsh-sc-brand"><Icon name="panel" size={16}/><span>Sidecar<small>工作台 · 独立侧聊</small></span></div>{onClose && <button className="dsh-sc-icon-button" aria-label="关闭 Sidecar" title="关闭右栏" onClick={onClose}><Icon name="close"/></button>}</header>;
 }
 
-function PanelSession({ api, mainSessionId, onClose }) {
+function PanelSession({ api, mainSessionId, onClose, toolIntent }) {
   const identity = useRef(1);
   const alive = useRef(true);
   const apiRef = useRef(api);
@@ -163,6 +163,15 @@ function PanelSession({ api, mainSessionId, onClose }) {
   const nextPacketId = useRef(1);
   const messageScroll = useRef(null);
   const followMessages = useRef(true);
+  const composerInput = useRef(null);
+  const handledToolSequence = useRef(null);
+  const pendingChatFocus = useRef(false);
+  const focusComposer = useCallback(() => {
+    if (!pendingChatFocus.current || !composerInput.current || composerInput.current.disabled) return;
+    composerInput.current.focus();
+    pendingChatFocus.current = false;
+  }, []);
+  useEffect(() => { focusComposer(); }, [focusComposer, sideId]);
 
   useEffect(() => {
     let disposed = false;
@@ -225,17 +234,36 @@ function PanelSession({ api, mainSessionId, onClose }) {
     notify('已加入上下文包，可在发送前审阅或移除。');
   };
 
-  const createSidechat = async () => {
+  const createSidechat = useCallback(async () => {
     setCreating(true);
     try {
       const result = await call('sidechat/create', { includeContext });
+      activeSide.current = result.id;
       setSideId(result.id);
       setSideTitle(result.title || '独立侧聊');
       setState((current) => current ? { ...current, sidechats: [...(current.sidechats || []).filter((item) => item.id !== result.id), result] } : current);
       notify(includeContext ? '已创建侧聊，并带入主任务上下文。' : '已创建独立侧聊。');
     } catch (error) { fail(error); }
     finally { if (alive.current) setCreating(false); }
-  };
+  }, [call, fail, includeContext, notify]);
+
+  useEffect(() => {
+    const sequence = toolIntent?.sequence;
+    const tool = toolIntent?.tool;
+    if (!Number.isFinite(sequence) || handledToolSequence.current === sequence || !['files', 'terminal', 'browser', 'chat'].includes(tool)) return undefined;
+    let disposed = false;
+    // StrictMode replays effects before this microtask. Do not start a mutation
+    // in its discarded pass, where the request's identity would become stale.
+    queueMicrotask(() => {
+      if (disposed || !alive.current || handledToolSequence.current === sequence) return;
+      handledToolSequence.current = sequence;
+      pendingChatFocus.current = tool === 'chat';
+      if (tool === 'chat') focusComposer();
+      else setTab(tool);
+      if (toolIntent.action === 'new-sidechat') void createSidechat();
+    });
+    return () => { disposed = true; };
+  }, [createSidechat, focusComposer, toolIntent?.sequence, toolIntent?.tool, toolIntent?.action]);
 
   const sendSidechat = async () => {
     if (!sideId || !draft.trim() || sending || conversation?.running) return;
@@ -492,7 +520,7 @@ function PanelSession({ api, mainSessionId, onClose }) {
         </div>
         <div className="dsh-sc-compose-area">
           {packets.length > 0 && <div className="dsh-sc-packets"><button className="dsh-sc-packets-heading" aria-expanded={packetsOpen} onClick={() => setPacketsOpen((value) => !value)}><Icon name="packet" size={14}/><strong>上下文包</strong><span>{packets.length}</span><small>发送前可审阅</small><Icon name="chevron" size={12} className={packetsOpen ? 'is-rotated' : ''}/></button>{packetsOpen && <div className="dsh-sc-packet-list">{packets.map((packet) => <div className="dsh-sc-packet" key={packet._id}><details><summary><span className="dsh-sc-packet-kind">{({ file: '文件', terminal: '终端', web: '网页', message: '消息' })[packet.kind] || packet.kind}</span><span title={packet.source}>{packet.source}</span>{packet.startLine && <small>L{packet.startLine}–{packet.endLine}</small>}</summary><pre>{packet.text}</pre></details><button className="dsh-sc-icon-button" aria-label={`移除上下文 ${packet.source}`} title="移除此上下文" onClick={() => setPackets((current) => current.filter((item) => item._id !== packet._id))}><Icon name="close" size={12}/></button></div>)}</div>}</div>}
-          <div className="dsh-sc-composer"><textarea aria-label="侧聊消息输入" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); sendSidechat(); } }} placeholder={sideId ? '向侧聊提问，整理思路…' : '先新建一个侧聊，即可开始讨论'} disabled={!sideId} rows={3}/><div className="dsh-sc-composer-actions"><span>Ctrl / ⌘ Enter 发送</span>{conversation?.running ? <button className="dsh-sc-small-button" onClick={cancelSidechat} disabled={cancelling}><Icon name="stop" size={12}/>{cancelling ? '停止中' : '停止侧聊'}</button> : <button className="dsh-sc-send-button" aria-label="发送到侧聊" onClick={sendSidechat} disabled={!sideId || !draft.trim() || Boolean(sending)}><Icon name="send" size={15}/>{sending && sending === sideId ? '发送中' : '发送'}</button>}</div></div>
+          <div className="dsh-sc-composer"><textarea ref={composerInput} aria-label="侧聊消息输入" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); sendSidechat(); } }} placeholder={sideId ? '向侧聊提问，整理思路…' : '先新建一个侧聊，即可开始讨论'} disabled={!sideId} rows={3}/><div className="dsh-sc-composer-actions"><span>Ctrl / ⌘ Enter 发送</span>{conversation?.running ? <button className="dsh-sc-small-button" onClick={cancelSidechat} disabled={cancelling}><Icon name="stop" size={12}/>{cancelling ? '停止中' : '停止侧聊'}</button> : <button className="dsh-sc-send-button" aria-label="发送到侧聊" onClick={sendSidechat} disabled={!sideId || !draft.trim() || Boolean(sending)}><Icon name="send" size={15}/>{sending && sending === sideId ? '发送中' : '发送'}</button>}</div></div>
           <p className="dsh-sc-compose-note"><span className="dsh-sc-status-dot"/>侧聊独立运行 · 仅在你确认后送回主任务</p>
         </div>
       </section>

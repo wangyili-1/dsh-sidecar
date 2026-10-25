@@ -1,102 +1,214 @@
-import React from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Panel from './Panel.jsx';
+import './toolbar.css';
 
-export const inject = ['slots', 'layout', 'connection'];
-
-function HeaderButton({ onToggle, useSidecarVisibility }) {
-  const active = useSidecarVisibility(value => value);
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={active}
-      title={active ? '返回工具详情' : '打开独立侧聊与工作面板'}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        border: '1px solid var(--dsw-alias-border-l2, #ffffff1f)', borderRadius: 14,
-        padding: '5px 10px', font: 'inherit', fontSize: 12, cursor: 'pointer',
-        color: 'inherit', background: active ? 'var(--dsw-alias-interactive-bg-active, #ffffff24)' : 'transparent',
-      }}
-    >
-      <span aria-hidden="true">◧</span> Sidecar
-    </button>
-  );
+export const inject = ['slots', 'layout', 'connection', 'sessions', 'workspaces', 'uiWorkspace'];
+const TOOLS = [
+  { id: 'files', label: '文件', description: '浏览项目文件与反例报告' },
+  { id: 'terminal', label: '终端', description: '运行命令并查看输出' },
+  { id: 'browser', label: '网页', description: '打开网页并摘录内容' },
+  { id: 'chat', label: '侧聊', description: '继续独立侧聊' },
+];
+function ToolbarIcon({ name }) {
+  const paths = {
+    more: <><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></>,
+    controls: <><path d="M10 6h10M4 12h8M18 12h2M4 18h3M13 18h7"/><circle cx="6" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></>,
+    new: <><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></>,
+    files: <><path d="M3 6h6l2 2h10v12H3z"/><path d="M3 6V4h6l2 2h8v2"/></>,
+    terminal: <path d="m5 6 5 5-5 5M13 17h6"/>,
+    browser: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></>,
+    chat: <path d="M4 4h16v12H9l-5 4z"/>,
+  };
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
-
-function Details({ sessionId, api, onClose }) {
-  return (
-    <div className="dsh-sidecar-native" style={{
-      height: '100%', width: '100%', minHeight: 0, minWidth: 0,
-      display: 'flex', flexDirection: 'column', overflow: 'hidden',
-    }}>
-      <Panel key={sessionId} api={api} mainSessionId={sessionId} onClose={onClose} />
-    </div>
-  );
+function Toolbar({ state, onToggle, onTool }) {
+  const [menu, setMenu] = useState(false);
+  const root = useRef(null);
+  const trigger = useRef(null);
+  useEffect(() => {
+    if (!menu) return undefined;
+    const owner = root.current?.ownerDocument;
+    const outside = event => { if (!root.current?.contains(event.target)) setMenu(false); };
+    const escape = event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault(); setMenu(false); trigger.current?.focus();
+    };
+    owner?.addEventListener('pointerdown', outside);
+    owner?.addEventListener('keydown', escape);
+    return () => { owner?.removeEventListener('pointerdown', outside); owner?.removeEventListener('keydown', escape); };
+  }, [menu]);
+  const focusItem = index => {
+    const items = root.current?.querySelectorAll('[role="menuitem"]');
+    if (items?.length) items[(index + items.length) % items.length].focus();
+  };
+  const choose = (tool, action) => { setMenu(false); void onTool(tool, action); };
+  return <div ref={root} className="dsh-sc-toolbar" role="group" aria-label="Sidecar 插件工具">
+    <button ref={trigger} className="dsh-sc-toolbar-button" type="button" aria-label="Sidecar 功能菜单" title="功能菜单" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(value => !value)} onKeyDown={event => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); setMenu(true); queueMicrotask(() => focusItem(0)); }
+    }}><ToolbarIcon name="more"/></button>
+    <button className="dsh-sc-toolbar-button" type="button" aria-label={state.visible ? '关闭 Sidecar 侧栏' : '打开 Sidecar 侧栏'} title={state.visible ? '关闭侧栏' : '打开侧栏'} aria-pressed={state.visible} onClick={() => { setMenu(false); void onToggle(); }}><ToolbarIcon name="controls"/></button>
+    <span className="dsh-sc-toolbar-separator" aria-hidden="true"/>
+    <button className="dsh-sc-toolbar-button" type="button" aria-label="新建 Sidecar 侧聊" title="新建侧聊" disabled={state.busy} onClick={() => choose('chat', 'new-sidechat')}><ToolbarIcon name="new"/></button>
+    {menu && <div className="dsh-sc-toolbar-menu" role="menu" aria-label="Sidecar 功能" onKeyDown={event => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      event.preventDefault();
+      const items = Array.from(root.current.querySelectorAll('[role="menuitem"]'));
+      focusItem(items.indexOf(event.target) + (event.key === 'ArrowDown' ? 1 : -1));
+    }}>{TOOLS.map(tool => <button key={tool.id} type="button" role="menuitem" disabled={state.busy} onClick={() => choose(tool.id)}><ToolbarIcon name={tool.id}/><span>{tool.label}<small>{tool.description}</small></span></button>)}</div>}
+  </div>;
 }
-
-/** A temporary details contribution leaves DSH's original tool details registration intact. */
+function HeaderToolbar({ useSidecarState, onToggle, onTool }) {
+  const state = useSidecarState(value => value);
+  if (state.visible || state.blank) return null;
+  return <Toolbar state={state} onToggle={onToggle} onTool={onTool}/>;
+}
+function Overlay({ api, useSidecarState, onToggle, onTool, onClose }) {
+  const state = useSidecarState(value => value);
+  return <div className="dsh-sc-shell-overlay">
+    {(state.visible || state.blank) && <div className="dsh-sc-floating-toolbar"><Toolbar state={state} onToggle={onToggle} onTool={onTool}/></div>}
+    {state.opened && <div className="dsh-sc-global-panel" hidden={!state.visible} style={{ width: state.width }}>
+      {state.error && <div className="dsh-sc-launcher-notice" role="status">{state.error}</div>}
+      {state.mainSessionId ? <Panel api={api} mainSessionId={state.mainSessionId} toolIntent={state.toolIntent}/> : <aside className="dsh-sc-launcher-empty" aria-label="Sidecar 右栏"><header>Sidecar</header><strong>{state.busy ? '正在连接工作区…' : '先选择工作区'}</strong><p>{state.busy ? '会创建或复用一个空白主会话，无需发送消息。' : '在左侧添加或选择项目工作区，然后从右上角打开需要的功能。'}</p><button type="button" onClick={onClose}>关闭侧栏</button></aside>}
+    </div>}
+  </div>;
+}
+/** Only this plugin-owned element is measured; no private DSH DOM selectors. */
+function DetailsSpacer({ onWidth }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    const update = () => onWidth(element.getBoundingClientRect().width);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [onWidth]);
+  return <div ref={ref} className="dsh-sc-details-spacer" aria-hidden="true"/>;
+}
+/** Match DSH's public navigation policy without choosing a filesystem path. */
+export function recentWorkspace(items, sessions) {
+  let selected;
+  let selectedTime = Number.NEGATIVE_INFINITY;
+  for (const workspace of items) {
+    let latest = Number.NEGATIVE_INFINITY;
+    for (const id of workspace.sessionIds || []) if (sessions[id]) latest = Math.max(latest, sessions[id].updatedAt || 0);
+    if (latest === Number.NEGATIVE_INFINITY) latest = Date.parse(workspace.createdAt) || 0;
+    if (selected === undefined || latest > selectedTime) { selected = workspace.workspaceId; selectedTime = latest; }
+  }
+  return selected;
+}
+/** Additive shell entry keeps the panel mounted when a blank session becomes a conversation. */
 export function apply(ctx) {
   let releaseDetails;
-  let visible = false;
+  let disposed = false;
+  let request = 0;
+  let sequence = 0;
+  let pendingSelection;
   const listeners = new Set();
-  const visibility = {
-    getSnapshot: () => visible,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+  const initial = ctx.sessions.list.getSnapshot();
+  let state = {
+    mainSessionId: initial.current,
+    blank: initial.current === undefined || initial.byId[initial.current]?.blank !== false,
+    visible: false, opened: false, busy: false, error: '', toolIntent: undefined, width: 420,
   };
-  const publish = (value) => {
-    if (visible === value) return;
-    visible = value;
+  const source = {
+    getSnapshot: () => state,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+  };
+  const publish = changes => {
+    if (disposed) return;
+    state = { ...state, ...changes };
     for (const listener of listeners) listener();
   };
-
   const api = Object.freeze({
     async call(endpoint, payload = {}, signal) {
       const result = await ctx.connection.rpc.call('/sidecar-api', endpoint, payload, signal);
       if (!result.ok) {
         const error = new Error(result.error?.message || 'Sidecar request failed');
-        error.code = result.error?.code;
-        error.details = result.error?.details;
+        error.code = result.error?.code; error.details = result.error?.details;
         throw error;
       }
       return result.value;
     },
   });
-
-  const close = () => {
-    const dispose = releaseDetails;
-    releaseDetails = undefined;
-    dispose?.();
-    publish(false);
-    // Keep the column open: removing our priority winner immediately restores tool details.
+  const onWidth = width => {
+    if (state.visible && !state.blank && width >= 280 && Math.abs(state.width - width) > .5) publish({ width });
   };
-
-  const open = () => {
-    if (releaseDetails === undefined) {
+  const syncDetails = () => {
+    const needsColumn = state.visible && !state.blank;
+    if (needsColumn && releaseDetails === undefined) {
       releaseDetails = ctx.slots.inject('details', () => ctx.slots.register({
-        name: 'details',
-        priority: -100,
-        inject: () => ({ api, onClose: close }),
-      }, Details));
+        name: 'details', priority: -100, inject: () => ({ onWidth }),
+      }, DetailsSpacer));
+      ctx.layout.openDetails();
+    } else if (!needsColumn && releaseDetails !== undefined) {
+      const dispose = releaseDetails; releaseDetails = undefined; dispose();
     }
-    publish(true);
-    ctx.layout.openDetails();
   };
-
-  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
-    name: 'conversation.session.header.actions',
-    id: 'dsh-sidecar',
-    order: 50,
-    inject: () => ({
-      onToggle: () => visible ? close() : open(),
-      hooks: { sidecarVisibility: visibility },
-    }),
-  }, HeaderButton));
-
+  const close = () => {
+    request++;
+    publish({ visible: false, busy: false, error: '', toolIntent: undefined });
+    const hadColumn = releaseDetails !== undefined;
+    syncDetails();
+    if (hadColumn) ctx.layout.closeDetails();
+  };
+  const syncSelection = () => {
+    if (disposed) return;
+    const sessions = ctx.sessions.list.getSnapshot();
+    const current = sessions.current;
+    const blank = current === undefined || sessions.byId[current]?.blank !== false;
+    if (current !== state.mainSessionId) {
+      const ownSelection = pendingSelection === current && current !== undefined;
+      if (!ownSelection) request++;
+      publish({ mainSessionId: current, blank, toolIntent: undefined, error: '', width: 420,
+        ...(!ownSelection ? { visible: false, busy: false } : {}),
+      });
+      syncDetails();
+    } else if (blank !== state.blank) { publish({ blank, width: 420 }); syncDetails(); }
+  };
+  const unsubscribeSessions = ctx.sessions.list.subscribe(syncSelection);
+  const onTool = async (tool = 'files', action) => {
+    if (disposed || state.busy) return;
+    const ticket = ++request;
+    publish({ visible: true, opened: true, error: '', busy: true });
+    try {
+      let current = ctx.sessions.list.getSnapshot().current;
+      if (current === undefined) {
+        const workspaces = ctx.workspaces.list.getSnapshot();
+        const sessions = ctx.sessions.list.getSnapshot();
+        if (workspaces.phase !== 'ready' || sessions.phase !== 'ready') throw new Error('工作区正在加载，请稍后重试。');
+        const workspaceId = recentWorkspace(workspaces.items, sessions.byId);
+        if (workspaceId === undefined) throw new Error('尚未添加工作区。请在左侧添加项目文件夹，再打开 Sidecar。');
+        const created = await ctx.uiWorkspace.connectWorkspace(workspaceId);
+        if (disposed || ticket !== request || ctx.sessions.list.getSnapshot().current !== undefined) return;
+        pendingSelection = created;
+        // Reconcile immediately too: DSH may batch store listener notifications.
+        try { ctx.sessions.open(created); syncSelection(); } finally { pendingSelection = undefined; }
+        current = ctx.sessions.list.getSnapshot().current;
+        if (current !== created) throw new Error('未能打开工作区会话，请在左侧选择会话后重试。');
+      }
+      if (disposed || ticket !== request) return;
+      const sessions = ctx.sessions.list.getSnapshot();
+      publish({ mainSessionId: current, blank: sessions.byId[current]?.blank !== false,
+        toolIntent: { sequence: ++sequence, tool, ...(action ? { action } : {}) }, busy: false,
+      });
+      syncDetails();
+    } catch (error) {
+      if (!disposed && ticket === request) publish({ error: error?.message || '无法打开 Sidecar，请重试。' });
+    } finally { if (!disposed && ticket === request && state.busy) publish({ busy: false }); }
+  };
+  const onToggle = () => state.visible ? close() : onTool('files');
+  const injectToolbar = () => ({ onToggle, onTool, hooks: { sidecarState: source } });
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay', id: 'dsh-sidecar-overlay', order: 100,
+    inject: () => ({ ...injectToolbar(), api, onClose: close }),
+  }, Overlay));
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities', id: 'dsh-sidecar-toolbar', order: 10000,
+    inject: injectToolbar,
+  }, HeaderToolbar));
   ctx.effect(() => () => {
-    close();
-    listeners.clear();
+    request++; disposed = true; unsubscribeSessions(); releaseDetails?.(); releaseDetails = undefined; listeners.clear();
   }, 'dsh-sidecar: client cleanup');
 }

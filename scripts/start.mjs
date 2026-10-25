@@ -4,9 +4,20 @@ import { homedir } from 'node:os';
 import { createServer } from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readSidecarInstallation } from './install.mjs';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const supportedDshVersion = '0.1.2-rc.1';
+
+export function pluginLoadMode(installation, entryName) {
+  if (installation.count > 1) throw new Error('Multiple persistent Sidecar entries were found. Repair the web profile before starting.');
+  if (installation.installed) {
+    if (installation.entryName !== entryName) throw new Error('A different Sidecar checkout is installed in DSH. Use that checkout or uninstall it before switching.');
+    return 'profile';
+  }
+  if (installation.overrideCount) throw new Error('The DSH profile targets Sidecar without installing it. Resolve that profile entry before starting.');
+  return 'overlay';
+}
 
 export function assertNodeVersion(version = process.versions.node) {
   const major = Number(String(version).replace(/^v/, '').split('.')[0]);
@@ -71,9 +82,11 @@ export async function start(args = process.argv.slice(2)) {
   const runtime = await findDsh(options.cli);
   await access(options.workspace);
   const home = resolve(process.env.DSH_HOME || join(homedir(), '.dsh'));
+  const entryName = pathToFileURL(join(projectRoot, 'lib/index.js')).href;
+  const pluginMode = pluginLoadMode(await readSidecarInstallation(home), entryName);
   if (options.doctor) {
     console.log(JSON.stringify({ node: process.version, dsh: runtime.version, cli: runtime.cli,
-      workspace: options.workspace, dshHome: home, url: `http://127.0.0.1:${options.port}`,
+      workspace: options.workspace, dshHome: home, pluginMode, url: `http://127.0.0.1:${options.port}`,
       credentialHandling: 'Existing DSH configuration; Sidecar does not read or copy API keys.' }, null, 2));
     return;
   }
@@ -82,11 +95,15 @@ export async function start(args = process.argv.slice(2)) {
   const stateRoot = join(projectRoot, '.local');
   await mkdir(stateRoot, { recursive: true });
   const patch = join(stateRoot, `sidecar-${options.port}.patch.json`);
-  await writeFile(patch, JSON.stringify([{ insert: [{ id: 'dsh-sidecar', name: pathToFileURL(join(projectRoot, 'lib/index.js')).href,
-    config: { dataDir: join(stateRoot, 'state'), defaultCwd: options.workspace } }] }], null, 2));
-  const command = [runtime.cli, '--profile', 'web', '--patch', patch, '--host', '127.0.0.1', '--port', String(options.port)];
+  const command = [runtime.cli, '--profile', 'web'];
+  if (pluginMode === 'overlay') {
+    await writeFile(patch, JSON.stringify([{ insert: [{ id: 'dsh-sidecar', name: entryName,
+      config: { dataDir: join(stateRoot, 'state'), defaultCwd: options.workspace } }] }], null, 2));
+    command.push('--patch', patch);
+  }
+  command.push('--host', '127.0.0.1', '--port', String(options.port));
   if (!options.open) command.push('--no-open');
-  console.log(`DSH Sidecar: http://127.0.0.1:${options.port}\nWorkspace: ${options.workspace}\nUsing DSH ${runtime.version}; existing desktop settings are unchanged.`);
+  console.log(`DSH Sidecar: http://127.0.0.1:${options.port}\nWorkspace: ${options.workspace}\nUsing DSH ${runtime.version}; plugin source: ${pluginMode}.`);
   const child = spawn(process.execPath, command, {
     cwd: options.workspace, stdio: 'inherit', windowsHide: true,
     env: { ...process.env, DSH_HOME: home, DSH_PERMISSION_MODE: process.env.DSH_PERMISSION_MODE || 'workspace-write' },

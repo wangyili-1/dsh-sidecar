@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { assertNodeVersion, findDsh, parseArgs, supportedDshVersion } from '../scripts/start.mjs';
+import { assertNodeVersion, findDsh, parseArgs, pluginLoadMode, supportedDshVersion } from '../scripts/start.mjs';
+
+test('launcher reuses a persistent plugin, preserves disabled entries, and rejects duplicate or conflicting installs', () => {
+  const entryName = 'file:///plugin/lib/index.js';
+  assert.equal(pluginLoadMode({ installed: false, count: 0, overrideCount: 0 }, entryName), 'overlay');
+  assert.equal(pluginLoadMode({ installed: true, count: 1, overrideCount: 0, entryName }, entryName), 'profile');
+  assert.equal(pluginLoadMode({ installed: true, count: 1, overrideCount: 1, entryName }, entryName), 'profile');
+  assert.throws(() => pluginLoadMode({ installed: true, count: 2, entryName }, entryName), /Multiple/);
+  assert.throws(() => pluginLoadMode({ installed: true, count: 1, entryName: 'file:///different/lib/index.js' }, entryName), /different/);
+  assert.throws(() => pluginLoadMode({ installed: false, count: 0, overrideCount: 1 }, entryName), /without installing/);
+});
 
 test('launcher rejects unsupported Node versions before discovering or starting DSH', () => {
   for (const version of ['18.20.0', '20.19.0', 'invalid']) assert.throws(() => assertNodeVersion(version), /Node.js 22/);

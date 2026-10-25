@@ -1,21 +1,63 @@
 {
   "name": "dsh-sidecar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Independent side conversations and a file, command and browser workbench for DeepSeek Harness.",
   "type": "module",
   "license": "MIT",
-  "engines": {"node": ">=22"},
+  "engines": {
+    "node": ">=22"
+  },
   "main": "lib/index.js",
-  "exports": {".": "./lib/index.js", "./client": "./lib/client.js", "./package.json": "./package.json"},
-  "files": ["lib", "src", "scripts", "tests", "README.md", "VALIDATION.md", "LICENSE", "docs", "Start-Sidecar.cmd"],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "scripts",
+    "tests",
+    "README.md",
+    "VALIDATION.md",
+    "LICENSE",
+    "docs",
+    "Start-Sidecar.cmd"
+  ],
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
     "start": "node scripts/start.mjs",
     "doctor": "node scripts/start.mjs --doctor",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "install:dsh": "node scripts/install.mjs install",
+    "uninstall:dsh": "node scripts/install.mjs uninstall",
+    "status:dsh": "node scripts/install.mjs status"
   },
-  "dsh": {"client": {"platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-connection"]}},
-  "keywords": ["dsh-plugin", "deepseek", "sidechat", "agent", "workspace"],
-  "devDependencies": {"esbuild": "0.28.2"}
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek",
+    "sidechat",
+    "agent",
+    "workspace"
+  ],
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
 }

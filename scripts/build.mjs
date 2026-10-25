@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { cp, mkdir, readFile, readdir } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -28,10 +28,11 @@ await build({
       builder.onLoad({ filter: /\.css$/ }, async ({ path }) => ({
         loader: 'js',
         contents: `const css = ${JSON.stringify(await readFile(path, 'utf8'))};
-let style = document.querySelector('style[data-dsh-sidecar]');
+const key = ${JSON.stringify(relative(source, path).replaceAll('\\', '/'))};
+let style = [...document.querySelectorAll('style[data-dsh-sidecar]')].find(item => item.getAttribute('data-dsh-sidecar') === key);
 if (!style) {
   style = document.createElement('style');
-  style.setAttribute('data-dsh-sidecar', '');
+  style.setAttribute('data-dsh-sidecar', key);
   document.head.appendChild(style);
 }
 style.textContent = css;
