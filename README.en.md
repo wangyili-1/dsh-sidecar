@@ -1,17 +1,17 @@
 # DSH Sidecar
 
-Development version **0.5.0-beta.1** adds [manual website handoffs and local models](docs/FREE_RESOURCES.md): DeepSeek, Doubao, Qwen, Kimi, and no-key loopback Ollama. Website tasks require the user to work on the official site and paste the answer back; they are not free automatic APIs.
+> **v0.5.0-beta.1 prerelease** adds DSH-led model coordination, manual website handoffs, local Ollama support, and [copyable prompts (Chinese)](docs/PROMPTS.md). [Download the beta](https://github.com/wangyili-1/dsh-sidecar/releases/tag/v0.5.0-beta.1) · [Stable v0.4.1](https://github.com/wangyili-1/dsh-sidecar/releases/tag/v0.4.1).
 
-> This development branch adds DSH-led multi-model task coordination: GLM / Qwen, OpenAI text and images, Claude, and compatible gateways. See the [integration guide](docs/MULTI_AGENT.md) for configuration, boundaries, and the WorkBuddy roadmap. Real provider accounts have not been tested; this feature is not included in the published v0.4.1 release.
+Website tasks require you to work on the official site and paste the answer back. API workers use your own credentials; protocol fixtures and the local handoff flow have been tested, but real provider authentication, inference, and image generation have not. See [integration details](docs/MULTI_AGENT.md) and [free/local resources](docs/FREE_RESOURCES.md).
 
 [![Tests](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml/badge.svg)](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Browser tabs, independent side chats, and resizable split panes for **DeepSeek Harness**.
 
-[中文](README.md) · **English** · [Quick start](#quick-start) · [Latest release](https://github.com/wangyili-1/dsh-sidecar/releases/latest) · [Report an issue](https://github.com/wangyili-1/dsh-sidecar/issues)
+[中文](README.md) · **English** · [Quick start](#quick-start) · [Prompts](docs/PROMPTS.md) · [Releases](https://github.com/wangyili-1/dsh-sidecar/releases) · [Report an issue](https://github.com/wangyili-1/dsh-sidecar/issues)
 
-Keep your main task running while you inspect a webpage, discuss an error separately, and review a conclusion before sending it back. This independently developed plugin uses DSH's native Web client, authenticated connection, and model configuration; it stores no separate model API key.
+Keep your main task running while you inspect a webpage, discuss an error separately, and review a conclusion before sending it back. Side chats use DSH's native Web client, authenticated connection, and model configuration. Optional external API workers have their own locally stored credentials or environment-variable references.
 
 ![Sidecar running in DSH: a resizable browser pane beside the main conversation](docs/resizable-browser.jpg)
 
@@ -24,7 +24,7 @@ You need **Git**, **Node.js 22+**, and **DeepSeek Harness 0.1.2-rc.1** with a wo
 Clone into a location where you intend to keep the plugin:
 
 ```powershell
-git clone https://github.com/wangyili-1/dsh-sidecar.git
+git clone --branch v0.5.0-beta.1 https://github.com/wangyili-1/dsh-sidecar.git
 cd dsh-sidecar
 npm ci
 npm run build
@@ -42,7 +42,8 @@ For custom DSH locations, release archives, standalone launch, and upgrade instr
 
 ## What you can do
 
-- **Browser-style tabs:** switch, reorder, close, and reopen webpages and chats within the current page and main conversation.
+- **DSH-led collaboration (beta):** delegate to configured text/image APIs, track tasks, and review saved outputs. Manual website handoffs and local Ollama are also supported; see the [prompt examples](docs/PROMPTS.md).
+- **Browser-style tabs:** start on Baidu, then switch, reorder, close, and reopen webpages and chats within the current page and main conversation.
 - **Resizable split panes:** drag a tab downward to split, resize the divider, or merge again. Drag the sidebar's left edge to adjust its width while the main layout follows.
 - **Independent side chats:** separate sessions, drafts, references, and send/stop actions. Stopping a side chat leaves the main task running.
 - **Reviewed references and handoffs:** add workspace text files or pasted text through the input's ＋ menu. Review references before sending; edit a conclusion before explicitly queuing it in the main conversation.

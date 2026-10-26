@@ -2,9 +2,9 @@
 
 **简体中文** · [English](README.en.md)
 
-> 开发分支新增 **DSH 主控的多模型协作**：GLM / Qwen、OpenAI 文本与生图、Claude 和兼容中转接口。接入范围、配置方法与 WorkBuddy 路线见[协作说明](docs/MULTI_AGENT.md)。此部分尚未用真实供应商账号验收，不属于已发布的 v0.4.1。
+> **v0.5.0-beta.1 预发布**：新增 DSH 主控的多模型协作、网页人工交接、本机 Ollama 接口及[可复制的提示词](docs/PROMPTS.md)。[下载预发布版](https://github.com/wangyili-1/dsh-sidecar/releases/tag/v0.5.0-beta.1) · [稳定版 v0.4.1](https://github.com/wangyili-1/dsh-sidecar/releases/tag/v0.4.1)。
 
-> 当前开发版 **0.5.0-beta.1** 还支持 [免费网页与本地模型](docs/FREE_RESOURCES.md)：DeepSeek、豆包、Qwen、Kimi 网页人工交接，以及无 Key 的本机 Ollama 协作。网页版需在官网操作并粘贴回答，API 赠额与网页权益分别管理。
+> API 协作使用你自己的接口与凭据；DeepSeek、豆包、Qwen、Kimi 网页成员需要在官网操作后粘贴回答。协议与本地交接已验证，真实供应商鉴权、在线推理及生图尚未验收。详见[协作说明](docs/MULTI_AGENT.md)与[免费资源方案](docs/FREE_RESOURCES.md)。
 
 [![Tests](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml/badge.svg)](https://github.com/wangyili-1/dsh-sidecar/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -13,9 +13,9 @@
 
 Native DeepSeek Harness plugin for independent side chats, browser tabs, and resizable split panes.
 
-适配 **DSH 0.1.2-rc.1** · **Node.js 22+** · **MIT** · 首个公开版本 **v0.4.1**。真实 DSH 界面验收在 Windows 完成；其他 DSH 版本尚未验证。
+适配 **DSH 0.1.2-rc.1** · **Node.js 22+** · **MIT** · 当前预发布 **v0.5.0-beta.1**。真实 DSH 界面验收在 Windows 完成；其他 DSH 版本尚未验证。
 
-[快速开始](#quick-start) · [功能](#功能) · [下载发布版](https://github.com/wangyili-1/dsh-sidecar/releases/latest) · [验证记录](VALIDATION.md) · [反馈问题](https://github.com/wangyili-1/dsh-sidecar/issues)
+[快速开始](#quick-start) · [提示词](docs/PROMPTS.md) · [功能](#功能) · [版本下载](https://github.com/wangyili-1/dsh-sidecar/releases) · [验证记录](VALIDATION.md) · [反馈问题](https://github.com/wangyili-1/dsh-sidecar/issues)
 
 ![拖宽侧栏并完整显示百度网页](docs/resizable-browser.jpg)
 
@@ -30,7 +30,7 @@ Native DeepSeek Harness plugin for independent side chats, browser tabs, and res
 先准备 Git、Node.js 22+，以及已配置好模型的 **DeepSeek Harness 0.1.2-rc.1**。在准备长期保留插件的位置执行，并把最后一行的示例路径改为你的工作区：
 
 ```powershell
-git clone https://github.com/wangyili-1/dsh-sidecar.git
+git clone --branch v0.5.0-beta.1 https://github.com/wangyili-1/dsh-sidecar.git
 cd dsh-sidecar
 npm ci
 npm run build
@@ -44,8 +44,10 @@ npm run install:dsh -- --workspace "C:\path\to\your-project"
 
 ## 功能
 
+- **DSH 主控协作（Beta）**：让主会话拆分任务，调用已配置的文本或生图接口；任务状态、取消和结果集中显示在“协作”标签。先从[提示词示例](docs/PROMPTS.md)开始。
+- **网页与本地资源（Beta）**：四个官网入口支持复制任务、人工回填与结果归档；本机 Ollama 支持无 Key 协议，需要自行安装模型。它们不替代主会话原有的 API 配置。
 - **简洁黑灰界面**：复用 DSH 的主题变量，减少重复标题和常驻说明。图标按钮提供悬停提示、键盘焦点及按下反馈；消息内容保留正常字号。
-- **浏览器式标签**：默认打开空白“新标签页”，通过顶部 ＋ 菜单新建网页、侧聊或恢复标签；关闭侧聊标签不会删除 DSH 保存的会话记录。
+- **浏览器式标签**：默认及新建网页直接打开百度首页，通过顶部 ＋ 菜单新建网页、侧聊、协作或恢复标签；关闭侧聊标签不会删除 DSH 保存的会话记录。
 - **拖动与上下分屏**：把标签拖到标签栏内可排序，拖到内容区下方可组成上下两组；拖动中间分隔条调整比例，也可一键合并回单组。
 - **侧栏与主页面联动**：复用 DSH 的 0.3 秒缓动，侧栏滑入的同时预留实际布局宽度，不遮挡主输入框。收起保留侧聊草稿；系统设置减少动态效果时关闭过渡。
 - **左右调整宽度**：拖动侧栏左边缘，主页面同步收窄；宽度会记住，窗口变窄时自动限制。拖拽条支持左右方向键，双击恢复默认。
@@ -103,9 +105,9 @@ npm run install:dsh -- --dsh-cli "PATH/TO/@deepseek-ai/dsh/lib/bin.js" --workspa
 | --- | --- |
 | 调节图标 | 展开或收起侧栏 |
 
-侧栏默认显示空白网页“新标签页”，顶部标签栏的 ＋ 用于添加网页、侧聊或协作，按需要保持单组或分成上下两组。先在 DSH 中选择工作区；当前主会话还没有消息时也能打开面板。如果当前没有主会话，插件会为所选工作区连接一个空会话，不自动调用模型。
+侧栏默认显示百度首页，顶部标签栏的 ＋ 用于添加网页、侧聊或协作，按需要保持单组或分成上下两组。先在 DSH 中选择工作区；当前主会话还没有消息时也能打开面板。如果当前没有主会话，插件会为所选工作区连接一个空会话，不自动调用模型。
 
-主页右上角不再提供方框加号；标签栏的 ＋ 和输入框内的引用 ＋ 各自保留。前端更新可保存草稿后刷新；从 v0.3.x 升级到本版还需在任务停止后重启 DSH 服务，以加载会话管理更新。
+主页右上角不再提供方框加号；标签栏的 ＋ 和输入框内的引用 ＋ 各自保留。前端更新可保存草稿后刷新；从 v0.4.1 或更早版本升级到本版，还需在任务停止后重启 DSH 服务，以加载协作后端和工具。
 
 安装器向 DSH 的 Web profile（默认 `~/.dsh/profiles/web/cordis.patch.yml`）添加一个插件条目，修改前保存原文件备份。重复安装相同路径不会重复添加，也不会覆盖已有 Sidecar 设置。插件以本项目的绝对路径加载，**安装后请保留项目目录的位置**；迁移目录时先卸载，再从新目录安装。
 

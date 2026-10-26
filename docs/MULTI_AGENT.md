@@ -1,8 +1,8 @@
-# 多模型协作（开发版）
+# 多模型协作（v0.5.0-beta.1 预发布）
 
 DSH 主会话负责拆分任务、选择执行者与整合结果。GLM、Qwen、Claude、OpenAI 或兼容接口接收具体子任务；同一侧栏的“协作”标签展示排队、执行、结果和取消操作。
 
-开发版 0.5.0-beta.1 也支持无 API Key 的网页人工交接与本机 Ollama。入口、免费范围及操作步骤见[免费资源方案](FREE_RESOURCES.md)。
+0.5.0-beta.1 也支持无 API Key 的网页人工交接与本机 Ollama。入口、免费范围及操作步骤见[免费资源方案](FREE_RESOURCES.md)，可直接复制的任务模板见[提示词](PROMPTS.md)。
 
 ![真实 DSH 中的协作任务验收](team-preview.jpg)
 
@@ -82,14 +82,14 @@ flowchart LR
 
 | 工具 | 作用 |
 | --- | --- |
-| `sidecar_list_agents` | 获取已启用且已有凭据的执行者 |
+| `sidecar_list_agents` | 获取已启用、配置就绪的执行者及 API / 本地 / 网页模式 |
 | `sidecar_submit_task` | 分派具体任务，立即取得任务 ID |
 | `sidecar_list_tasks` | 查看当前主会话的协作任务与结果摘要 |
 | `sidecar_get_task` | 查看一个任务的状态、结果与产物路径 |
 | `sidecar_wait_tasks` | 有界等待一组任务；等待超时不取消任务 |
 | `sidecar_cancel_task` | 取消一个任务，不影响其他任务或主会话 |
 
-主会话身份来自 DSH 的工具执行上下文，不接受模型伪造的 `mainSessionId`。长文本在列表与工具输出中限量展示，完整内容保留在 `result.md`。
+主会话身份来自 DSH 的工具执行上下文，不接受模型伪造的 `mainSessionId`。长文本在列表与工具输出中限量展示，完整内容保留在任务返回的产物路径；API 文本通常为 `result.md`，网页回填为 `answer-<id>.md`。
 
 ## WorkBuddy 与外部 agent 的后续接入
 
