@@ -114,9 +114,9 @@ test('team intent opens one collaboration tab and preserves it through split and
 
 test('two web tabs retain stable surface parents and keys through split, close and restore', async () => {
   const h = harness(); await h.flush();
-  assert.equal(surfaceOf(h, 'files').length, 0, 'opening the workspace should start with a blank web page');
+  assert.equal(surfaceOf(h, 'files').length, 0, 'opening the workspace should start with the browser home page');
   assert.equal(surfaceOf(h, 'browser')[0].key, 'web-start');
-  assert(h.find(label('关闭标签 新标签页')));
+  assert(h.find(label('关闭标签 百度')));
   await menu(h);
   assert.equal(h.nodes(text('文件')).length, 0);
   assert.equal(h.nodes(text('终端')).length, 0);
@@ -132,7 +132,8 @@ test('two web tabs retain stable surface parents and keys through split, close a
   assert.equal(split.props.children.type, active.props.children.type);
   assert.equal(split.key, active.key);
   const title = h.nodes(node => node.props?.role === 'tab' && node.props['data-ws-tab-id'] === active.key)[0].props.children[1].props.children;
-  h.find(label(`关闭标签 ${title}`)).props.onClick(); await h.flush();
+  const activeTab = h.find(node => node.props?.['data-ws-tab-item'] === active.key);
+  activeTab.props.children.find(label(`关闭标签 ${title}`)).props.onClick(); await h.flush();
   assert.equal(h.surfaces().find(node => node.key === active.key).props.hidden, true);
   await menu(h); h.find(label(`恢复标签 ${title}`)).props.onClick(); await h.flush();
   assert.equal(h.surfaces().find(node => node.key === active.key).props.hidden, false);

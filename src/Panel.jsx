@@ -8,6 +8,7 @@ import './panel.css';
 
 const STALE = Symbol('stale-sidecar-request');
 const POLL_MS = 1500;
+const BROWSER_HOME_URL = 'https://www.baidu.com/';
 
 function Icon({ name, size = 16, ...props }) {
   const paths = {
@@ -422,8 +423,9 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedS
     finally { if (alive.current) setTerminalCancelling(false); }
   };
 
-  const [urlInput, setUrlInput] = useState('');
-  const [browserUrl, setBrowserUrl] = useState('');
+  const initialBrowserUrl = surface === 'browser' ? BROWSER_HOME_URL : '';
+  const [urlInput, setUrlInput] = useState(initialBrowserUrl);
+  const [browserUrl, setBrowserUrl] = useState(initialBrowserUrl);
   const [browserVersion, setBrowserVersion] = useState(0);
   const [browserError, setBrowserError] = useState('');
   const [browserMode, setBrowserMode] = useState('fit');
@@ -448,7 +450,7 @@ function PanelSession({ api, mainSessionId, onClose, toolIntent, surface, fixedS
     owner?.addEventListener?.('resize', measure);
     return () => { observer?.disconnect(); owner?.removeEventListener?.('resize', measure); };
   }, [Boolean(browserUrl)]);
-  const [quoteUrl, setQuoteUrl] = useState('');
+  const [quoteUrl, setQuoteUrl] = useState(initialBrowserUrl);
   const [quoteText, setQuoteText] = useState('');
   const navigateBrowser = () => {
     try {

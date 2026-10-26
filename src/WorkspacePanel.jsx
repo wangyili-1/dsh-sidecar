@@ -11,7 +11,7 @@ function createInitialWorkspace() {
   const initial = createWorkspaceState();
   return {
     ...initial,
-    tabs: [{ id: 'web-start', kind: 'browser', title: '新标签页' }],
+    tabs: [{ id: 'web-start', kind: 'browser', title: '百度' }],
     groups: { ...initial.groups, top: ['web-start'] },
     active: { ...initial.active, top: 'web-start' },
   };
@@ -211,7 +211,7 @@ function WorkspaceSession({ api, mainSessionId, onClose, toolIntent }) {
       if (existing) return open(existing, group);
     }
     const ordinal = sequence.current++;
-    return open({ id: `web-${ordinal}`, kind: 'browser', title: `网页 ${ordinal}` }, group);
+    return open({ id: `web-${ordinal}`, kind: 'browser', title: '百度' }, group);
   }, [open]);
   const continueChat = useCallback((group) => {
     const snapshot = current.current;
